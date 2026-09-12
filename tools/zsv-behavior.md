@@ -132,3 +132,53 @@ and only on an invalid delimiter — which `zucsv` rejects before calling
 `zsv_new()`. `zucsv` still installs a no-op `errprintf`, so that no vendored
 code can write to the R session's stderr under any input. This is what keeps
 the two `stderr` references in the vendored sources harmless for CRAN.
+
+## The fast/SIMD engine returns raw, un-normalized cells
+
+`opts.scan_engine = 3` selects a branchless SIMD scanner. It is **not usable
+by zucsv**, for a reason that is not in the option's documentation.
+
+First, it is unreachable from the pull API at all: `zsv_next_row()`
+overwrites `scan_engine` with its own mode (`zsv.c:203`), so setting the
+option there is silently ignored. Reaching it means the push API
+(`zsv_parse_more()` plus a row handler).
+
+Second, and decisively, it does not normalize cells. Same input, both
+engines:
+
+| input cell | compat | fast |
+|---|---|---|
+| `"quoted"` | `quoted` | `"quoted"` — quotes kept |
+| `"he said ""hi"""` | `he said "hi"` | unchanged — not unescaped |
+| `"x,y"` | `x,y` | `"x,y"` |
+| `""` | *(empty)* | `""` — **two bytes, not zero** |
+| `x"y` | `x"y` | *(nothing; status 7, `nonstandard_csv`)* |
+
+The `""` row is the sharpest: zucsv's blank-record rule (§10) is
+`len == 0 && !QUOTE_CLOSED`, and under the fast engine a quoted empty cell
+has `len == 2`, so the rule silently changes meaning.
+
+`zsv_set_column_filter()` documents that selected columns "receive full
+processing (quote normalization, UTF-8 encoding)". Measured: setting it over
+every column changes nothing — output is byte-identical with and without it.
+(`zsv_scan_delim_fast.c`'s own header comment says quoted cells still go
+through `cell_dl()` for normalization; the code stores `buff + cell_start`
+raw instead. Both read as upstream documentation drift rather than anything
+zucsv can configure.)
+
+So the fast engine would oblige zucsv to strip quotes and unescape doubled
+quotes itself. That is CSV syntax, which §28 assigns to `zsv`, and it would
+consume much of the gain: the benchmark's character file is written by
+`write.csv()`, so every string cell is quoted and would need the extra work.
+
+Measured, for the record — per cell, doing zucsv's own work on top:
+
+| | numeric | character |
+|---|---|---|
+| pull, default (what zucsv uses) | 41.7 ns | 28.3 ns |
+| pull, `scan_engine = FAST` | 41.9 ns | 28.5 ns — silently ignored |
+| push, default | 43.3 ns | 26.9 ns |
+| push, `scan_engine = FAST` | 37.4 ns | 16.1 ns — but raw cells |
+
+Worth re-checking on upgrade: if upstream makes the fast engine normalize,
+it becomes worth roughly 10% end to end on numeric and more on text.
