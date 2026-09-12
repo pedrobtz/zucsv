@@ -28,4 +28,5 @@
 
 * local macOS 15, R 4.5.2
 * GitHub Actions: macOS, Windows, Ubuntu (R-devel, release, oldrel-1)
-* GitHub Actions: rocker/r-devel-san (ASan/UBSan)
+* GitHub Actions (pedrobtz/r-actions@v1): ASan/UBSan under R-devel, valgrind,
+  LTO, gctorture, and rchk

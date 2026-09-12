@@ -1,0 +1,34 @@
+# Memory safety, undefined behaviour and PROTECT-stack checks, from the
+# reusable workflows in pedrobtz/r-actions. These are the checks CRAN runs
+# after acceptance ("Additional issues"), and the ones zucsv most needs: the
+# package is mostly C, holds a FILE * and a parser across R error and
+# interrupt paths, and caches SEXPs across allocating calls.
+#
+# The local development loop covers ASan/UBSan and gctorture on macOS, but
+# macOS ASan cannot detect leaks and rchk does not run there at all, so these
+# jobs are what actually validate SS16's cleanup discipline.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+name: native-checks
+
+permissions: read-all
+
+jobs:
+  sanitizers:
+    uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
+
+  valgrind:
+    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
+
+  lto:
+    uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
+
+  gctorture:
+    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@v1
+
+  rchk:
+    uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1

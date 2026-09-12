@@ -117,8 +117,8 @@ parser actually does.
 
 **Work**
 
-- CI job running the test suite under ASan/UBSan (`rocker/r-devel-san` container). Fix everything it reports, in vendored code too (as patches).
-- R-hub v2 (`rhub::rhub_check()`) runs on the sanitizer, `valgrind`, `rchk`, `c23`, `noremap`, and `nold` platforms; fix everything.
+- `.github/workflows/native-checks.yaml`, calling the reusable workflows in `pedrobtz/r-actions@v1`: `sanitizers` (ASan/UBSan under R-devel, with the leak detection macOS cannot do), `valgrind`, `lto`, `gctorture` and `rchk`. Fix everything they report, in vendored code too (as patches).
+- These replace the hand-rolled sanitizer job and the planned R-hub runs; `rchk` is informational by design, so read its artifact rather than trusting a green tick.
 - Stress tests behind `skip_on_cran()`: millions of rows, 65,536 columns, multi-MB single cell, file at the record-size cap, repeated failing parses in a loop (leak check via sanitizer job).
 - Confirm the "file changed while reading" drift check by truncating a file between passes in a test that uses a small file and a `Sys.sleep`-free trick (e.g. a fixture whose second open is redirected); if that proves impractical, cover it by code review and leave a comment.
 - `bench/` (in `.Rbuildignore`): scripts comparing `utils::read.csv()`, `readr::read_csv()`, `data.table::fread()`, `zucsv::read_csv()` on numeric-heavy, character-heavy, narrow, and wide files (§22). Record results in `bench/RESULTS.md`. The bar is "no avoidable overhead", not "fastest".
@@ -126,8 +126,8 @@ parser actually does.
 
 **Exit criteria**
 
-- Sanitizer CI job green and part of the required checks.
-- R-hub sanitizer/valgrind/rchk runs clean.
+- `native-checks` green, and part of the required checks.
+- `rchk`'s artifact read and every finding either fixed or explained.
 - `bench/RESULTS.md` exists and shows `zucsv` within a small factor of `read.csv()` on every shape (faster is expected; slower on any shape needs an explanation in the file).
 
 ---

@@ -3,7 +3,7 @@
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml)
-[![sanitizers](https://github.com/pedrobtz/zucsv/actions/workflows/sanitizers.yaml/badge.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/sanitizers.yaml)
+[![native-checks](https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml/badge.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml)
 <!-- badges: end -->
 
 Read CSV files into base R data frames, using the
