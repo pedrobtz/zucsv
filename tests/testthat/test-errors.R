@@ -54,7 +54,7 @@ test_that("col_types is validated for names, and for length once known", {
 })
 
 test_that("a file wider than the column cap is an error", {
-  skip_on_cran()
+  skip_unless_stress()
   wide <- paste0(paste0("c", seq_len(65537L)), collapse = ",")
   expect_error(
     read_text(paste0(wide, "\n")),

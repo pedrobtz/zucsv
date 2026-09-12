@@ -114,7 +114,7 @@ test_that("repeated character values are reused without changing anything", {
 })
 
 test_that("a long run of a long value is still correct", {
-  skip_on_cran()
+  skip_unless_stress()
   val <- strrep("abcdefgh", 200)
   txt <- paste0("a\n", paste(rep(val, 5000), collapse = "\n"), "\n")
   got <- read_text(txt)$a

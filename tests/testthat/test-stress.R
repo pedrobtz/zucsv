@@ -1,9 +1,11 @@
-# Larger inputs than the ordinary suite uses. All skipped on CRAN, where the
-# time budget is small; the sanitizer job runs them with NOT_CRAN set, which
-# is where they earn their keep.
+# Larger inputs than the ordinary suite uses. Gated behind ZUCSV_STRESS rather
+# than skip_on_cran(): these check limits, not memory safety, so running them
+# under gctorture buys nothing and costs hours (see helper-fixtures.R).
+#
+#   ZUCSV_STRESS=true Rscript -e 'devtools::test()'
 
 test_that("a wide table at the column cap reads, and one past it errors", {
-  skip_on_cran()
+  skip_unless_stress()
   at_cap <- paste0(paste0("c", seq_len(65536L)), collapse = ",")
   df <- read_text(paste0(at_cap, "\n"))
   expect_identical(ncol(df), 65536L)
@@ -14,7 +16,7 @@ test_that("a wide table at the column cap reads, and one past it errors", {
 })
 
 test_that("many rows read with the right values at both ends", {
-  skip_on_cran()
+  skip_unless_stress()
   n <- 200000L
   txt <- paste0("i,s\n", paste0(seq_len(n), ",x", collapse = "\n"), "\n")
   df <- read_text(txt)
@@ -26,7 +28,7 @@ test_that("many rows read with the right values at both ends", {
 })
 
 test_that("a multi-megabyte single cell survives", {
-  skip_on_cran()
+  skip_unless_stress()
   cell <- strrep("x", 4000000L)
   df <- read_text(paste0("a,b\n", cell, ",2\n"))
   expect_identical(nchar(df$a), 4000000L)
@@ -34,7 +36,7 @@ test_that("a multi-megabyte single cell survives", {
 })
 
 test_that("a row over the record-size limit is an error, not a truncation", {
-  skip_on_cran()
+  skip_unless_stress()
   # The parser drops an oversize row silently, as a zero-cell record, so
   # without zucsv's own check this would read as a short table rather than
   # fail (design SS15, tools/zsv-behavior.md).
@@ -47,7 +49,7 @@ test_that("a row over the record-size limit is an error, not a truncation", {
 })
 
 test_that("repeated failing parses do not accumulate anything", {
-  skip_on_cran()
+  skip_unless_stress()
   # Under the sanitizer job this is the leak check for the error path.
   bad <- csv_file("a,b\n1,2,3\n")
   for (i in 1:2000) expect_error(read_csv(bad), "has 3 fields")
@@ -58,7 +60,7 @@ test_that("repeated failing parses do not accumulate anything", {
 })
 
 test_that("many columns and many rows together", {
-  skip_on_cran()
+  skip_unless_stress()
   ncol <- 500L
   nrow <- 500L
   hdr <- paste0(paste0("c", seq_len(ncol)), collapse = ",")
