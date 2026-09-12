@@ -1,9 +1,26 @@
-# zucsv 0.0.0.9000
+# zucsv 0.1.0
 
-* `read_csv()` reads a delimited file into a base R data frame using the
-  bundled `zsv` parser, with type inference over logical, integer, double and
-  character, and `col_types` to force those types instead.
+First release.
 
-* Not released yet: Stages 4 and 5 of `ROADMAP.md` (sanitizers, static
-  analysis, benchmarks, documentation and the CRAN submission) are still
-  outstanding.
+* `read_csv()` reads a local delimited file into a base R `data.frame`, using
+  a bundled subset of the [`zsv`](https://github.com/liquidaty/zsv) C parser.
+  No R package dependencies.
+
+* Handles quoted fields, embedded delimiters and newlines, escaped quotes,
+  LF and CRLF, a missing final terminator, and a UTF-8 BOM.
+
+* Infers `logical`, `integer`, `double` and `character` column types, or
+  takes them from `col_types`. A value that will not convert to a forced type
+  is an error naming the row, column and value, never a silent `NA`.
+
+* `header`, `delimiter` and `na` control the header row, the field delimiter
+  (any single ASCII byte) and which cell values read as missing.
+
+* Documented, tested behavior that is easy to get wrong elsewhere: blank
+  lines are skipped everywhere, every record must have the same width, column
+  names are preserved exactly including duplicates, invalid UTF-8 and
+  embedded NULs are errors where they occur, and nothing is whitespace
+  trimmed.
+
+* Large reads are interruptible, and the file handle and parser are released
+  on errors and interrupts alike.

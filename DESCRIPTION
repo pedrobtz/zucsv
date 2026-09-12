@@ -1,6 +1,6 @@
 Package: zucsv
 Title: Read CSV Files Using the 'zsv' Parser
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: c(
     person("pedrobtz", email = "pedrobtz@gmail.com", role = c("aut", "cre")),
     person("Guarnerix Inc dba Liquidaty", role = "cph",
