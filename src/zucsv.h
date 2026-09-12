@@ -32,6 +32,14 @@
    compact row names and nrow() are integers. */
 #define ZUCSV_MAX_ROWS 2147483647
 
+#if defined(__GNUC__) || defined(__clang__)
+#define ZUCSV_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ZUCSV_NOINLINE __attribute__((noinline))
+#else
+#define ZUCSV_UNLIKELY(x) (x)
+#define ZUCSV_NOINLINE
+#endif
+
 /* Records between R_CheckUserInterrupt() calls. */
 #define ZUCSV_INTERRUPT_INTERVAL 16384
 
@@ -117,6 +125,12 @@ int zucsv_is_double(const unsigned char *str, size_t len);
    independent of LC_NUMERIC; see convert.c. */
 int zucsv_as_logical(const unsigned char *str, size_t len);
 double zucsv_as_double(const unsigned char *str, size_t len);
+
+/* Fills the conversion tables and chooses the accumulator instance that
+   matches R_strtod. Called once from R_init_zucsv(), before any conversion:
+   afterwards the conversion state is read-only, which keeps the hot path
+   branch-free and would keep it race-free on worker threads. */
+void zucsv_numeric_init(void);
 
 /* --- per-column inference state ------------------------------------ */
 

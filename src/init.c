@@ -13,6 +13,7 @@ static const R_CallMethodDef call_methods[] = {
 
 attribute_visible void R_init_zucsv(DllInfo *dll) {
     R_registerRoutines(dll, NULL, call_methods, NULL, NULL);
+    zucsv_numeric_init();
     R_useDynamicSymbols(dll, FALSE);
     R_forceSymbols(dll, TRUE);
 }

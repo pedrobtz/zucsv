@@ -48,7 +48,7 @@
 
 #define ZUCSV_POW_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _pow10)
 #define ZUCSV_TBL_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _tbl)
-#define ZUCSV_TBL_READY ZUCSV_CAT(ZUCSV_STRTOD_NAME, _tbl_ready)
+#define ZUCSV_FILL_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _fill)
 
 /* R's power loop, verbatim; also what fills the table. */
 static ZUCSV_ACC ZUCSV_POW_NAME(int k) {
@@ -59,8 +59,16 @@ static ZUCSV_ACC ZUCSV_POW_NAME(int k) {
   return fac;
 }
 
+/* Filled once by zucsv_numeric_init() from R_init_zucsv(), then read-only.
+   Not lazily initialised: a mutable static written on first use would be a
+   data race the moment conversion runs on worker threads, and it costs a
+   branch in the hot path besides. */
 static ZUCSV_ACC ZUCSV_TBL_NAME[ZUCSV_ACC_EXACT_POW + 1];
-static int ZUCSV_TBL_READY = 0;
+
+static void ZUCSV_FILL_NAME(void) {
+  for (int k = 0; k <= ZUCSV_ACC_EXACT_POW; k++)
+    ZUCSV_TBL_NAME[k] = ZUCSV_POW_NAME(k);
+}
 
 static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int sign) {
   ZUCSV_ACC ans = 0.0;
@@ -117,29 +125,11 @@ static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int 
     ans *= fac;
   } else if (expn < 0) { /* positive powers are exact */
     k = -expn;
-    if (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) {
-      if (!ZUCSV_TBL_READY) {
-        for (int t = 0; t <= ZUCSV_ACC_EXACT_POW; t++)
-          ZUCSV_TBL_NAME[t] = ZUCSV_POW_NAME(t);
-        ZUCSV_TBL_READY = 1;
-      }
-      fac = ZUCSV_TBL_NAME[k];
-    } else {
-      fac = ZUCSV_POW_NAME(k);
-    }
+    fac = (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) ? ZUCSV_TBL_NAME[k] : ZUCSV_POW_NAME(k);
     ans /= fac;
   } else if (ans != 0.0) { /* allow big exponents on 0, e.g. 0E4933 */
     k = expn;
-    if (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) {
-      if (!ZUCSV_TBL_READY) {
-        for (int t = 0; t <= ZUCSV_ACC_EXACT_POW; t++)
-          ZUCSV_TBL_NAME[t] = ZUCSV_POW_NAME(t);
-        ZUCSV_TBL_READY = 1;
-      }
-      fac = ZUCSV_TBL_NAME[k];
-    } else {
-      fac = ZUCSV_POW_NAME(k);
-    }
+    fac = (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) ? ZUCSV_TBL_NAME[k] : ZUCSV_POW_NAME(k);
     ans *= fac;
   }
 
@@ -155,7 +145,7 @@ static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int 
 #undef ZUCSV_ACC_EXACT_POW
 #undef ZUCSV_POW_NAME
 #undef ZUCSV_TBL_NAME
-#undef ZUCSV_TBL_READY
+#undef ZUCSV_FILL_NAME
 #undef ZUCSV_ACC
 #undef ZUCSV_ACC_MANT_DIG
 #undef ZUCSV_STRTOD_NAME

@@ -119,3 +119,30 @@ test_that("double conversion is bit-identical to as.numeric() on every branch", 
   # identical() treats 0 and -0 as equal; the bytes must match too
   expect_identical(lapply(got, writeBin, con = raw()), lapply(want, writeBin, con = raw()))
 })
+
+
+test_that("integer syntax is a subset of double syntax", {
+  # zucsv_infer_update() skips the double grammar when the integer grammar
+  # accepts a cell, which is only sound if every integer-shaped string is
+  # also double-shaped. If that ever stops holding, a column of integers
+  # would be inferred integer while can_double silently stayed true.
+  ints <- c("0", "1", "-1", "+1", "007", "+007", "-007",
+            "2147483647", "-2147483647", "000000000001")
+  for (v in ints) {
+    # accepted as integer...
+    expect_identical(typeof(read_text(paste0("a\n", v, "\n"))$a), "integer", info = v)
+    # ...and still double-shaped, so forcing double must work
+    expect_identical(typeof(read_text(paste0("a\n", v, "\n"), col_types = "double")$a),
+                     "double", info = v)
+  }
+
+  # and the widening path still works: an integer followed by a non-integer
+  # number must leave the column double, which needs can_double to have
+  # survived the rows the double scan was skipped on
+  expect_type(read_text("a\n1\n2\n3\n2.5\n")$a, "double")
+  expect_identical(read_text("a\n1\n2\n3\n2.5\n")$a, c(1, 2, 3, 2.5))
+  expect_type(read_text("a\n1\n2\n2147483648\n")$a, "double")
+  expect_identical(read_text("a\n1\n2\n2147483648\n")$a, c(1, 2, 2147483648))
+  # ... and a trailing non-number still falls all the way to character
+  expect_type(read_text("a\n1\n2\nx\n")$a, "character")
+})

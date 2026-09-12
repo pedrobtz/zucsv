@@ -248,14 +248,20 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
 
 /* The fallback, and what zucsv did before: R_strtod needs a terminator. */
 static double zucsv_strtod_call(const unsigned char *s, size_t n) {
-  char stack_buf[64];
+  char stack_buf[256];
   char *buf = stack_buf;
-  if (n + 1 > sizeof(stack_buf))
-    buf = (char *)R_alloc(n + 1, 1);
+  if (n + 1 > sizeof(stack_buf)) {
+    buf = (char *)malloc(n + 1);
+    if (!buf)
+      return R_NaN;
+  }
   memcpy(buf, s, n);
   buf[n] = '\0';
   char *end;
-  return R_strtod(buf, &end);
+  double value = R_strtod(buf, &end);
+  if (buf != stack_buf)
+    free(buf);
+  return value;
 }
 
 enum { ZUCSV_STRTOD_UNSET = -1, ZUCSV_STRTOD_DOUBLE = 0, ZUCSV_STRTOD_LDOUBLE = 1, ZUCSV_STRTOD_CALL = 2 };
@@ -268,18 +274,54 @@ static int zucsv_same_bits(double a, double b) {
 /* Values on which long double and double accumulation give different bits
    on x87, chosen from the cases the parity test found. Where the two types
    are the same width both instances agree and the first is taken. */
-static void zucsv_strtod_calibrate(void) {
-  static const char *const probes[] = {"0.799012", "2.235263", "3.141592653589793", "1e-307",
-                                       "1e-308",   "123e-310", "1.7976931348623157e308"};
+
+
+/* Probe values on which long double and double accumulation give different
+   bits on x87: the cases the parity test found, plus the ends of the range
+   where the scaling branches differ. */
+static const char *const zucsv_probes[] = {
+  "0.799012", "2.235263", "-0.685363", "1.358931", "3.141592653589793", "0.1",
+  "1e-307",   "1e-308",   "123e-310",  "1.5e-310", "4.9e-324",
+  "1e22",     "1e23",     "1e27",      "1.7976931348623157e308"};
+
+/* Calibration calls the converters through these, and they must not be
+   inlined. Calling them directly from the loop below lets the compiler
+   unroll it and inline a copy of the converter per probe, which exhausts
+   its inlining budget and leaves zucsv_as_double() calling out of line
+   instead -- measured at 0.141s -> 0.201s on a 2M-cell numeric file, from
+   nothing but the length of this list. Forcing one out-of-line call site
+   here keeps the decision about the hot path independent of how many
+   probes we choose to have. */
+void zucsv_numeric_init(void) {
+
+  zucsv_strtod_ldouble_fill();
+  zucsv_strtod_double_fill();
+
+  /* Probing goes through zucsv_as_double() rather than calling the two
+     instances directly. Each converter then keeps exactly one call site, so
+     the compiler's decision to inline it into the hot path cannot be
+     disturbed by how long this probe list is. Calling them from the loop
+     measured 0.141s -> 0.201s on a 2M-cell numeric file with 15 probes
+     against 7: the loop gets unrolled, a copy of the converter is inlined
+     per probe, and the inlining budget for zucsv_as_double() is spent. */
+  const size_t nprobe = sizeof(zucsv_probes) / sizeof(*zucsv_probes);
   int ok_ld = 1, ok_d = 1;
-  for (size_t p = 0; p < sizeof(probes) / sizeof(*probes); p++) {
-    const unsigned char *s = (const unsigned char *)probes[p];
-    size_t n = strlen(probes[p]);
-    char *end;
-    double r = R_strtod(probes[p], &end);
-    ok_ld = ok_ld && zucsv_same_bits(r, zucsv_strtod_ldouble(s, n, 0, 1));
-    ok_d = ok_d && zucsv_same_bits(r, zucsv_strtod_double(s, n, 0, 1));
+
+  for (int mode = 0; mode < 2; mode++) {
+    zucsv_strtod_mode = mode ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_LDOUBLE;
+    int ok = 1;
+    for (size_t p = 0; p < nprobe; p++) {
+      char *end;
+      double r = R_strtod(zucsv_probes[p], &end);
+      double got = zucsv_as_double((const unsigned char *)zucsv_probes[p], strlen(zucsv_probes[p]));
+      ok = ok && zucsv_same_bits(r, got);
+    }
+    if (mode)
+      ok_d = ok;
+    else
+      ok_ld = ok;
   }
+
   zucsv_strtod_mode = ok_ld ? ZUCSV_STRTOD_LDOUBLE : ok_d ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_CALL;
 }
 
@@ -300,8 +342,8 @@ double zucsv_as_double(const unsigned char *s, size_t n) {
   if (n == 3 && memcmp(s, "NaN", 3) == 0)
     return R_NaN;
 
-  if (zucsv_strtod_mode == ZUCSV_STRTOD_UNSET)
-    zucsv_strtod_calibrate();
+  if (ZUCSV_UNLIKELY(zucsv_strtod_mode == ZUCSV_STRTOD_UNSET))
+    zucsv_numeric_init();
 
   switch (zucsv_strtod_mode) {
   case ZUCSV_STRTOD_LDOUBLE:
@@ -343,9 +385,8 @@ int zucsv_infer_update(zucsv_infer *st, const unsigned char *str, size_t len) {
   }
   if (st->can_integer) {
     if (zucsv_is_integer(str, len, NULL))
-      accepted = 1;
-    else
-      st->can_integer = 0;
+      return 1; /* integer syntax is a subset of double syntax */
+    st->can_integer = 0;
   }
   if (st->can_double) {
     if (zucsv_is_double(str, len))
