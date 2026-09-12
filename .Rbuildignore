@@ -8,3 +8,6 @@
 ^ROADMAP\.md$
 ^bench$
 ^cran-comments\.md$
+\.o$
+\.so$
+\.dll$

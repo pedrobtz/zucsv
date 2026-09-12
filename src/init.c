@@ -4,7 +4,10 @@
 #include <R_ext/Rdynload.h>
 #include <R_ext/Visibility.h>
 
+#include "zucsv.h"
+
 static const R_CallMethodDef call_methods[] = {
+    {"C_zsv_smoke", (DL_FUNC)&C_zsv_smoke, 1},
     {NULL, NULL, 0}
 };
 

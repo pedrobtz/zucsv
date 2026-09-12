@@ -1,0 +1,18 @@
+The zucsv R package as a whole is released under the MIT licence; see the
+LICENSE file and the Authors@R field of DESCRIPTION.
+
+Bundled third-party code
+------------------------
+
+Files:     src/vendor/zsv/**
+Copyright: 2021 Guarnerix Inc dba Liquidaty
+Licence:   MIT (reproduced in src/vendor/zsv/LICENSE)
+Source:    https://github.com/liquidaty/zsv
+
+These files are a subset of the zsv CSV parser, vendored unmodified except
+for the patches listed in src/vendor/zsv/UPSTREAM, which also records the
+exact upstream commit. Only the parser library is included; the zsv
+command-line application and its SQL, SQLite, JSON and extension facilities
+are not part of this package.
+
+Every other file in the package is copyright the zucsv authors.

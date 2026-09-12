@@ -1,6 +1,6 @@
 # zucsv — Design for v0.1.0
 
-**Status:** Draft, revised 2026-09-12 (decisions taken in the revision are listed in §29)  
+**Status:** Draft, revised 2026-09-12; §10/§13/§14/§15 corrected against the vendored parser's measured behavior (`tools/zsv-behavior.md`). Decisions are logged in §29.  
 **Backend:** vendored `zsv` / `libzsv`  
 **Primary API:** `read_csv()`  
 **Scope:** small, read-only first release, shipped to CRAN  
@@ -292,7 +292,7 @@ while (zsv_next_row(parser) == zsv_status_row) {
 
 The pull API is preferred because it gives the R wrapper an ordinary sequential control flow, makes error handling easier, and avoids invoking R-oriented logic from parser callbacks.
 
-The parser is fed from the `FILE *` through `zsv`'s read callback (`fread`-compatible). The vendoring step (§17) must confirm that the pinned upstream commit provides the pull API and record that fact; if it does not, the push API driving the same per-row function is the fallback, and the design above is otherwise unchanged.
+The parser is fed from the `FILE *` through `zsv`'s read callback (`fread`-compatible): `zsv_next_row()` pulls its own input from `opts.stream` and must not be mixed with `zsv_parse_bytes()` or `zsv_parse_more()`. The pinned commit provides the pull API; it returns `zsv_status_row` per record and `zsv_status_done` at end of input.
 
 The push API can be benchmarked later, but it is not needed to establish the package architecture.
 
@@ -377,13 +377,19 @@ Future versions may add an explicit ragged-row policy such as padding short rows
 
 A *blank record* is a record with no bytes at all between its line terminators (a trailing terminator at end of file does not create a record). Blank records are skipped everywhere: they do not count as data rows and do not trigger a width error. This makes files that end in `\n\n`, or that contain an empty line between blocks, read without complaint, and matches the default of the other common R readers.
 
-Consequences to document and test:
+A blank record is recognised as one cell, of length zero, that was **not**
+quoted. The parser reports quoting per cell, so `""` on a line of its own is
+a one-cell record that is *not* blank and is kept. Consequences to document
+and test:
 
 - a record containing only whitespace or only delimiters is *not* blank; it is a record of one or more empty cells and is subject to the width check;
-- in a single-column file an intentional empty cell must therefore be written as `""` to survive; an unquoted empty line is skipped;
+- in a single-column file an intentional empty cell must be written as `""` to survive; an unquoted empty line is skipped;
 - with `header = TRUE`, the header is the first non-blank record.
 
-`zsv`'s own treatment of empty lines must be confirmed with fixtures during vendoring (§17); the policy above is `zucsv`'s and must hold regardless of what the parser emits.
+The parser does not skip blank lines itself — it emits them as one-cell
+records — so this policy is `zucsv`'s own. It holds regardless of what the
+parser emits; `tools/zsv-behavior.md` records what it actually does, and
+`tests/testthat/test-upstream.R` enforces that the two stay consistent.
 
 ## 11. Type inference
 
@@ -475,7 +481,7 @@ This strict behavior prevents silent data loss and keeps v0.1 semantics easy to 
 
 v0.1 treats text input as UTF-8.
 
-A UTF-8 BOM (`EF BB BF`) at the beginning of the file is ignored before interpreting the first field or header name. Whether `zsv` already strips it is a vendoring question (§17); `zucsv` guarantees the result either way.
+A UTF-8 BOM (`EF BB BF`) at the beginning of the file is ignored before interpreting the first field or header name. The vendored parser already strips it, so `zucsv` adds no BOM handling of its own, but it guarantees the result and covers it with a fixture either way.
 
 Strings handed to R are created with `mkCharLenCE(..., CE_UTF8)`. Cells that fail the primitive grammars — the only cells that can carry non-ASCII bytes into R — and header names are validated as UTF-8 in pass 1. Invalid sequences are an error:
 
@@ -502,12 +508,15 @@ Required behavior:
 - a trailing delimiter (`a,b,`) yields a final empty cell, so the record has three fields;
 - quoted delimiters remain part of the cell value;
 - escaped quotes (`""` inside a quoted field) are unescaped by `zsv`;
-- embedded newlines in quoted fields remain part of the cell value, including a CR LF pair;
+- embedded newlines in quoted fields remain part of the cell value, but a CR LF pair inside a quoted field is normalised to a single LF by the parser, so CR bytes from line endings do not round-trip;
 - CRLF and LF input must both be accepted; a final record without a trailing terminator is still a record;
 - header names are never interpreted as missing values;
 - `" 42"` (leading space) is not numeric syntax and makes its column `character`.
 
-Blank-record behavior (§10) and unbalanced-quote behavior must be locked down with explicit fixtures matching the vendored `zsv` semantics before release rather than being left accidental.
+Blank-record (§10), BOM, and unbalanced-quote behavior are established in
+`tools/zsv-behavior.md` and pinned by fixtures rather than left accidental.
+An unbalanced quote is not an error from the parser: it swallows the rest of
+the line into one cell, which `zucsv` then reports as a row-width mismatch.
 
 ## 15. Resource limits
 
@@ -521,10 +530,20 @@ At minimum it must guard against:
 - native allocation failures reported by `zsv` (`zsv_new()` returning `NULL`, out-of-memory statuses);
 - parser limits encountered by `zsv`, in particular its maximum row size.
 
-`zsv` exposes configurable maximum column and row sizes. `zucsv` sets intentional internal values rather than silently inheriting upstream defaults:
+`zsv` exposes configurable maximum column and row sizes, and **silently
+truncates** when either is exceeded — no error status, no way to tell the
+truncated result from a genuine one. `zucsv` must detect both itself
+(`tools/zsv-behavior.md` has the measurements):
 
-- maximum columns: 65,536 (`CSV exceeds zucsv's maximum of 65536 columns`);
-- maximum record size: a deliberately generous fixed value chosen during vendoring once the upstream behavior for oversize rows is understood; exceeding it is an error that names the record.
+- **Columns.** Leaving `max_columns` at 0 gets the upstream default of 1024,
+  so it is always set explicitly. `zucsv` sets it to its cap *plus one*
+  (65537) and errors when a record reports more than 65,536 cells
+  (`CSV exceeds zucsv's maximum of 65536 columns`). The extra slot is what
+  separates a file at the cap from one over it.
+- **Record size.** An oversize row is emitted as a record with **zero**
+  cells. Since even a blank line yields one cell, a zero-cell record is an
+  unambiguous overflow signal. `zucsv` sets a generous `max_row_size` and
+  raises an error naming the record when it sees one.
 
 If real use cases require more, the limits can later become configurable.
 
@@ -602,7 +621,7 @@ Vendoring must include an audit of the subset for:
 - compiler warnings under `-Wall -pedantic -Wstrict-prototypes` with GCC and Clang, and under C23 (`R CMD check` on R-devel);
 - anything requiring `-march`/`-mavx*` flags or a non-standard `-std=` for correctness;
 - GNU make constructs, since `src/Makevars` must work with a POSIX `make` unless `SystemRequirements: GNU make` is declared;
-- the behaviors `zucsv` relies on and must confirm: pull API availability, empty-line records, BOM handling, oversize-row status, unbalanced-quote recovery.
+- the behaviors `zucsv` relies on, re-verified and written back to `tools/zsv-behavior.md`: how the pull API is driven, empty-line records, the quoted-cell flag, BOM handling, the two silent-truncation paths, and unbalanced-quote recovery.
 
 ## 18. Parser mode for v0.1
 
@@ -958,3 +977,7 @@ Decisions taken in the 2026-09-12 revision that were open or unstated in the fir
 | 8 | Pass 1 validates everything; pass 2 only converts (§9) | Validate forced types lazily in pass 2 | Pass 2 never errors on content, so the only pass-2 failure is "file changed", and allocation happens once with full knowledge. |
 | 9 | Cleanup via `R_UnwindProtect()` plus `R_alloc()` for all scratch memory (§16) | External pointer with finalizer; manual `free()` before each `Rf_error()` | Only two resources need manual cleanup; a finalizer would close the file at GC time rather than at error time. |
 | 10 | Delimiter must be a single ASCII byte (§4) | Any single byte | Bytes >= 0x80 are never a whole character in UTF-8, so the restriction only removes inputs that could not have worked. |
+| 11 | A blank record is one unquoted zero-length cell (§10) | Any one-cell zero-length record | The parser reports per-cell quoting, so `""` on its own line stays distinguishable from a bare blank line. Decision #2's documented cost is smaller than it looked when it was taken. |
+| 12 | `max_columns` is set to the cap plus one (§15) | Set it to the cap | The parser truncates at `max_columns` silently, so a record reporting exactly the cap is ambiguous. One spare slot turns "at the limit" into "over the limit". |
+| 13 | A zero-cell record means an oversize row (§15) | Trust a parser status code | There is no status for it — the row is dropped silently. A blank line still yields one cell, so zero cells cannot arise any other way. |
+| 14 | `zucsv` installs a no-op `errprintf` (§16) | Leave `opts.errf` unset | Unset means `stderr`. Routing it to a no-op means no vendored code can write to the R session's stderr under any input, which is what CRAN's policy is about. |

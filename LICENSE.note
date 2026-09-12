@@ -1,0 +1,7 @@
+zucsv bundles a subset of the zsv CSV parser (https://github.com/liquidaty/zsv),
+copyright 2021 Guarnerix Inc dba Liquidaty, under the MIT licence.
+
+The bundled sources are in src/vendor/zsv/; their licence is reproduced in
+src/vendor/zsv/LICENSE, the exact upstream commit and any applied patches are
+recorded in src/vendor/zsv/UPSTREAM, and the file-level breakdown is in
+inst/COPYRIGHTS.

@@ -1,0 +1,23 @@
+# Reason: guard an unused forward declaration so -Wunused-function is clean
+#
+# zsv_get_cell_with_overwrite is defined and used only under ZSV_EXTRAS, which
+# zucsv never defines, but its forward declaration in zsv.c is unguarded. That
+# leaves a static function declared and never defined or used, which clang and
+# gcc report as -Wunused-function. CRAN treats compiler warnings from a
+# package's own build as something to fix, so guard the declaration to match
+# the definition.
+#
+# Upstream: not yet reported. This is a plain bug rather than a zucsv-specific
+# need, so it should be sent upstream and dropped here once it lands.
+--- a/src/zsv.c
++++ b/src/zsv.c
+@@ -17,7 +17,9 @@
+ #endif
+ 
+ static struct zsv_cell zsv_get_cell_1(zsv_parser parser, size_t ix);
++#ifdef ZSV_EXTRAS
+ static struct zsv_cell zsv_get_cell_with_overwrite(zsv_parser parser, size_t col_ix);
++#endif
+ #include "zsv_internal.c"
+ 
+ #ifndef ZSV_VERSION
