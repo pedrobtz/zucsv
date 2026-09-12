@@ -78,13 +78,14 @@ behavior, so it stays covered by a fixture.
 | `"x,y"` | `x,y` — delimiter preserved |
 | `"he said ""hi"""` | `he said "hi"` — unescaped |
 | `"x\ny"` | `x\ny` — embedded LF preserved |
-| `"x\r\ny"` | `x\ny` — **embedded CRLF is normalised to LF** |
+| `"x\r\ny"` | `x\r\ny` — embedded CRLF preserved byte for byte |
+| `"x\ry"` | `x\ry` — a lone CR is preserved too |
 | `x"y` (quote mid-cell) | `x"y` — accepted, passed through |
 | `"unterminated,2\n` | one cell, `unterminated,2\n` — no error status |
 
-The CRLF normalisation inside quoted cells is worth knowing: a round trip
-through `zucsv` does not preserve CR bytes that were part of a line ending
-inside a quoted field. `zsv_status_nonstandard_csv` is raised only by the
+Bytes inside a quoted field are passed through untouched, CR included; only
+the *record* terminator is consumed. `zsv_status_nonstandard_csv` is raised
+only by the
 fast/SIMD engine, which `zucsv` does not use (§18), so malformed quoting is
 never an error from the parser — it surfaces as a row-width mismatch.
 

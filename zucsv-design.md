@@ -508,7 +508,7 @@ Required behavior:
 - a trailing delimiter (`a,b,`) yields a final empty cell, so the record has three fields;
 - quoted delimiters remain part of the cell value;
 - escaped quotes (`""` inside a quoted field) are unescaped by `zsv`;
-- embedded newlines in quoted fields remain part of the cell value, but a CR LF pair inside a quoted field is normalised to a single LF by the parser, so CR bytes from line endings do not round-trip;
+- embedded newlines in quoted fields remain part of the cell value, including a CR LF pair and a lone CR;
 - CRLF and LF input must both be accepted; a final record without a trailing terminator is still a record;
 - header names are never interpreted as missing values;
 - `" 42"` (leading space) is not numeric syntax and makes its column `character`.
