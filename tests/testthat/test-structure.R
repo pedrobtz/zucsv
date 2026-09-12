@@ -1,5 +1,5 @@
 test_that("ordinary files read into a data frame", {
-  df <- read_text("a,b\n1,2\n")
+  df <- read_text("a,b\n1,2\n", col_types = "character")
   expect_s3_class(df, "data.frame")
   expect_identical(names(df), c("a", "b"))
   expect_identical(df$a, "1")
@@ -15,7 +15,7 @@ test_that("row names are the compact form", {
 })
 
 test_that("header = FALSE generates V1..Vn and keeps every record", {
-  df <- read_text("1,2\n3,4\n", header = FALSE)
+  df <- read_text("1,2\n3,4\n", header = FALSE, col_types = "character")
   expect_identical(names(df), c("V1", "V2"))
   expect_identical(nrow(df), 2L)
   expect_identical(df$V1, c("1", "3"))
@@ -29,7 +29,7 @@ test_that("line endings and a missing final terminator are all accepted", {
 })
 
 test_that("single-column files work", {
-  df <- read_text("a\n1\n2\n")
+  df <- read_text("a\n1\n2\n", col_types = "character")
   expect_identical(dim(df), c(2L, 1L))
   expect_identical(df$a, c("1", "2"))
 })
@@ -70,5 +70,5 @@ test_that("many rows read correctly", {
   txt <- paste0("a,b\n", paste0(sprintf("%d,x", 1:5000), collapse = "\n"), "\n")
   df <- read_text(txt)
   expect_identical(nrow(df), 5000L)
-  expect_identical(df$a[5000], "5000")
+  expect_identical(df$a[5000], 5000L)
 })

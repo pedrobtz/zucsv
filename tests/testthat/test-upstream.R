@@ -9,7 +9,7 @@
 test_that("the parser strips a UTF-8 BOM", {
   df <- read_text(c(BOM, charToRaw("a,b\n1,2\n")))
   expect_identical(names(df), c("a", "b"))
-  expect_identical(df$a, "1")
+  expect_identical(df$a, 1L)
 
   # a file of nothing but a BOM has no records at all
   expect_identical(dim(read_text(BOM)), c(0L, 0L))

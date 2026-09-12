@@ -115,6 +115,75 @@ static void zucsv_check_text(const struct zsv_cell *c, double record, R_xlen_t j
            zucsv_col_label(names, j, buf, sizeof(buf)));
 }
 
+/* Maps a col_types name to the enum. The R wrapper has already rejected
+   anything not in this set. */
+static zucsv_type zucsv_type_from_name(const char *name) {
+  if (strcmp(name, "logical") == 0)
+    return ZUCSV_LOGICAL;
+  if (strcmp(name, "integer") == 0)
+    return ZUCSV_INTEGER;
+  if (strcmp(name, "double") == 0)
+    return ZUCSV_DOUBLE;
+  return ZUCSV_CHARACTER;
+}
+
+static const char *zucsv_type_name(zucsv_type t) {
+  switch (t) {
+  case ZUCSV_LOGICAL:
+    return "logical";
+  case ZUCSV_INTEGER:
+    return "integer";
+  case ZUCSV_DOUBLE:
+    return "double";
+  default:
+    return "character";
+  }
+}
+
+/* Formats a cell for an error message: truncated, with anything that would
+   break up the message flattened to a space. */
+static void zucsv_show_cell(char *buf, size_t bufsize, const unsigned char *str, size_t len) {
+  size_t n = len < ZUCSV_MSG_MAX ? len : ZUCSV_MSG_MAX;
+  size_t j = 0;
+  for (size_t i = 0; i < n && j + 4 < bufsize; i++) {
+    unsigned char c = str[i];
+    buf[j++] = (c == '\0' || c == '\n' || c == '\r' || c == '\t') ? ' ' : (char)c;
+  }
+  if (len > n && j + 4 < bufsize) {
+    buf[j++] = '.';
+    buf[j++] = '.';
+    buf[j++] = '.';
+  }
+  buf[j] = '\0';
+}
+
+/* A cell that must satisfy a forced type but does not is an error, never a
+   warning followed by NA (design SS12). */
+static void zucsv_check_forced(zucsv_type type, const struct zsv_cell *c, double record,
+                               R_xlen_t j, SEXP names) {
+  int ok;
+  switch (type) {
+  case ZUCSV_LOGICAL:
+    ok = zucsv_is_logical(c->str, c->len);
+    break;
+  case ZUCSV_INTEGER:
+    ok = zucsv_is_integer(c->str, c->len, NULL);
+    break;
+  case ZUCSV_DOUBLE:
+    ok = zucsv_is_double(c->str, c->len);
+    break;
+  default:
+    return; /* character accepts any cell that got this far */
+  }
+  if (ok)
+    return;
+
+  char label[64], shown[ZUCSV_MSG_MAX + 8];
+  zucsv_show_cell(shown, sizeof(shown), c->str, c->len);
+  Rf_error("Cannot parse row %.0f, column %d (\"%s\") as %s: \"%s\"", record, (int)(j + 1),
+           zucsv_col_label(names, j, label, sizeof(label)), zucsv_type_name(type), shown);
+}
+
 /* Shape errors that apply to any record, checked before its width is known
    to be right. `record` is 1-based as the parser emits records, header
    included (design SS10). */
@@ -146,6 +215,8 @@ static SEXP zucsv_read_body(void *data) {
   R_xlen_t ncol = 0;
   double nrow = 0;
   int nprotect = 0;
+  zucsv_type *types = NULL;
+  zucsv_infer *infer = NULL;
 
   /* ================= pass 1: inspect and validate ================= */
   SEXP names = R_NilValue;
@@ -169,6 +240,22 @@ static SEXP zucsv_read_body(void *data) {
 
         names = PROTECT(Rf_allocVector(STRSXP, ncol));
         nprotect++;
+
+        /* Per-column state, sized now that ncol is known. R_alloc'd, so it
+           is released with everything else if this call unwinds. */
+        types = (zucsv_type *)R_alloc((size_t)ncol, sizeof(zucsv_type));
+        if (ctx->col_types == R_NilValue) {
+          infer = (zucsv_infer *)R_alloc((size_t)ncol, sizeof(zucsv_infer));
+          for (R_xlen_t j = 0; j < ncol; j++)
+            zucsv_infer_init(&infer[j]);
+        } else {
+          R_xlen_t nt = XLENGTH(ctx->col_types);
+          if (nt != 1 && nt != ncol)
+            Rf_error("col_types has length %d but the CSV has %d columns", (int)nt, (int)ncol);
+          for (R_xlen_t j = 0; j < ncol; j++)
+            types[j] = zucsv_type_from_name(
+              Rf_translateChar(STRING_ELT(ctx->col_types, nt == 1 ? 0 : j)));
+        }
 
         if (ctx->want_header) {
           /* Header values are text: never na-matched, never type-inferred
@@ -197,6 +284,16 @@ static SEXP zucsv_read_body(void *data) {
       for (R_xlen_t j = 0; j < ncol; j++) {
         struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
         zucsv_check_text(&c, record, j, names);
+
+        /* A missing cell is evidence for nothing and is exempt from a
+           forced type: it becomes that type's NA (design SS11, SS12). */
+        if (zucsv_is_na(&ctx->na, c.str, c.len))
+          continue;
+
+        if (ctx->col_types == R_NilValue)
+          zucsv_infer_update(&infer[j], c.str, c.len);
+        else
+          zucsv_check_forced(types[j], &c, record, j, names);
       }
 
       if (nrow >= (double)ZUCSV_MAX_ROWS)
@@ -223,18 +320,33 @@ static SEXP zucsv_read_body(void *data) {
     return out;
   }
 
-  /* col_types length is checked now the column count is known (design SS4). */
-  if (ctx->col_types != R_NilValue) {
-    R_xlen_t nt = XLENGTH(ctx->col_types);
-    if (nt != 1 && nt != ncol)
-      Rf_error("col_types has length %d but the CSV has %d columns", (int)nt, (int)ncol);
+  /* Inference is complete: fix each column's type before allocating. */
+  if (ctx->col_types == R_NilValue) {
+    for (R_xlen_t j = 0; j < ncol; j++)
+      types[j] = zucsv_infer_result(&infer[j]);
   }
 
   /* ================= pass 2: materialize ================= */
   SEXP out = PROTECT(Rf_allocVector(VECSXP, ncol));
   nprotect++;
-  for (R_xlen_t j = 0; j < ncol; j++)
-    SET_VECTOR_ELT(out, j, Rf_allocVector(STRSXP, (R_xlen_t)nrow));
+  for (R_xlen_t j = 0; j < ncol; j++) {
+    SEXPTYPE sxp;
+    switch (types[j]) {
+    case ZUCSV_LOGICAL:
+      sxp = LGLSXP;
+      break;
+    case ZUCSV_INTEGER:
+      sxp = INTSXP;
+      break;
+    case ZUCSV_DOUBLE:
+      sxp = REALSXP;
+      break;
+    default:
+      sxp = STRSXP;
+      break;
+    }
+    SET_VECTOR_ELT(out, j, Rf_allocVector(sxp, (R_xlen_t)nrow));
+  }
 
   zucsv_open(&ctx->reader, ctx->path, ctx->delim);
 
@@ -263,11 +375,31 @@ static SEXP zucsv_read_body(void *data) {
       for (R_xlen_t j = 0; j < ncol; j++) {
         struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
         SEXP col = VECTOR_ELT(out, j);
-        if (zucsv_is_na(&ctx->na, c.str, c.len))
-          SET_STRING_ELT(col, (R_xlen_t)row, NA_STRING);
-        else
-          SET_STRING_ELT(col, (R_xlen_t)row,
-                         Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8));
+        R_xlen_t at = (R_xlen_t)row;
+        int missing = zucsv_is_na(&ctx->na, c.str, c.len);
+
+        /* Pass 1 checked every cell against this column's type, so nothing
+           here can fail on content (design SS9). */
+        switch (types[j]) {
+        case ZUCSV_LOGICAL:
+          LOGICAL(col)[at] = missing ? NA_LOGICAL : zucsv_as_logical(c.str, c.len);
+          break;
+        case ZUCSV_INTEGER: {
+          int value = NA_INTEGER;
+          if (!missing)
+            zucsv_is_integer(c.str, c.len, &value);
+          INTEGER(col)[at] = value;
+          break;
+        }
+        case ZUCSV_DOUBLE:
+          REAL(col)[at] = missing ? NA_REAL : zucsv_as_double(c.str, c.len);
+          break;
+        default:
+          SET_STRING_ELT(col, at,
+                         missing ? NA_STRING
+                                 : Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8));
+          break;
+        }
       }
       row += 1;
 

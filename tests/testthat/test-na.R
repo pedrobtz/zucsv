@@ -39,5 +39,5 @@ test_that("na may hold several values, including multi-byte ones", {
   df <- read_text("a,b,c\nnil,none,3\n", na = c("nil", "none"))
   expect_identical(df$a, NA_character_)
   expect_identical(df$b, NA_character_)
-  expect_identical(df$c, "3")
+  expect_identical(df$c, 3L)
 })

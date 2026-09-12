@@ -78,6 +78,41 @@ int zucsv_valid_utf8(const unsigned char *str, size_t len);
 /* Index of the first NUL byte, or -1. */
 R_xlen_t zucsv_find_nul(const unsigned char *str, size_t len);
 
+/* --- grammars (design SS11) ---------------------------------------- *
+ *
+ * Each returns non-zero when the cell is syntactically that type. They are
+ * deliberately stricter than the corresponding C library parser, so that
+ * inference cannot be widened by syntax R would not accept either. The
+ * checks never copy or modify the cell. */
+
+/* Exactly TRUE, FALSE, true or false. */
+int zucsv_is_logical(const unsigned char *str, size_t len);
+
+/* [+-]?[0-9]+ that fits R's integer range. *out is set when it does. */
+int zucsv_is_integer(const unsigned char *str, size_t len, int *out);
+
+/* Decimal or scientific notation, plus Inf, -Inf, +Inf and NaN. */
+int zucsv_is_double(const unsigned char *str, size_t len);
+
+/* Converts a cell already known to satisfy zucsv_is_logical/is_double.
+   The double conversion goes through R_strtod, so values match as.numeric()
+   exactly and do not depend on LC_NUMERIC. */
+int zucsv_as_logical(const unsigned char *str, size_t len);
+double zucsv_as_double(const unsigned char *str, size_t len);
+
+/* --- per-column inference state ------------------------------------ */
+
+typedef struct {
+  int can_logical;
+  int can_integer;
+  int can_double;
+  int all_missing;
+} zucsv_infer;
+
+void zucsv_infer_init(zucsv_infer *st);
+void zucsv_infer_update(zucsv_infer *st, const unsigned char *str, size_t len);
+zucsv_type zucsv_infer_result(const zucsv_infer *st);
+
 /* ------------------------------------------------------------------ *
  * read_csv.c
  * ------------------------------------------------------------------ */

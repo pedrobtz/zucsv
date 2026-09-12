@@ -48,7 +48,7 @@ test_that("a path with non-ASCII characters and ~ are both handled", {
   path <- file.path(dir, "café.csv")
   con <- file(path, "wb"); writeBin(charToRaw("a,b\n1,2\n"), con); close(con)
 
-  expect_identical(read_csv(path)$a, "1")
+  expect_identical(read_csv(path)$a, 1L)
   # path.expand() is applied, so a ~ path resolves
-  expect_identical(read_csv(path.expand(path))$a, "1")
+  expect_identical(read_csv(path.expand(path))$a, 1L)
 })
