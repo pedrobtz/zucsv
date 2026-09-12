@@ -12,3 +12,4 @@
 \.so$
 \.dll$
 ^\.covrignore$
+^vignettes/articles$
