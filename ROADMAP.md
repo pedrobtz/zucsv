@@ -6,7 +6,7 @@ Six stages, each ending in a green `R CMD check` on the three CI platforms. A st
 
 Rough sizing: 0 and 5 are small, 1 depends on what the vendored code audit turns up, 2–4 are the bulk of the work.
 
-**Progress:** Stages 0–3 are complete (one commit each). Stage 4 is next.
+**Progress:** Stages 0–4 are complete (one commit each). Stage 5 is next.
 Findings from the finished stages have been folded back into
 `zucsv-design.md`; `tools/zsv-behavior.md` is the record of what the vendored
 parser actually does.

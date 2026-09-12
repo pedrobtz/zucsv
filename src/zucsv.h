@@ -18,9 +18,15 @@
 #define ZUCSV_MAX_COLS 65536
 
 /* Maximum bytes in one record. An oversize row reaches us as a zero-cell
-   record (see tools/zsv-behavior.md), which is how it is detected; this
-   value only decides where that boundary sits. */
-#define ZUCSV_MAX_ROW_SIZE (64u * 1024u * 1024u)
+   record (see tools/zsv-behavior.md), which is how it is detected.
+   
+   The real threshold is the parser's scan buffer, which it sizes at twice
+   opts.max_row_size -- so that option is set to half of this, and this value
+   is what the limit actually is. The buffer is malloc'd on every parse, so
+   raising it costs memory on every call, including on tiny files. 8 MiB is
+   128x zsv's own 64 KiB default, covers any realistic row, and leaves pages
+   untouched (and so unpaged) unless rows really do get that large. */
+#define ZUCSV_MAX_ROW_SIZE (8u * 1024u * 1024u)
 
 /* Maximum data rows. Stricter than R_XLEN_T_MAX on purpose: a data frame's
    compact row names and nrow() are integers. */

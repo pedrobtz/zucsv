@@ -542,8 +542,13 @@ truncated result from a genuine one. `zucsv` must detect both itself
   separates a file at the cap from one over it.
 - **Record size.** An oversize row is emitted as a record with **zero**
   cells. Since even a blank line yields one cell, a zero-cell record is an
-  unambiguous overflow signal. `zucsv` sets a generous `max_row_size` and
-  raises an error naming the record when it sees one.
+  unambiguous overflow signal, and `zucsv` raises an error naming the record.
+  The limit is 8 MiB. It is not free to set this high: the parser sizes its
+  scan buffer at twice `max_row_size` and `malloc`s it on every parse, so a
+  huge limit is a memory cost on every call, including on tiny files. 8 MiB
+  is 128x the upstream default of 64 KiB, covers any realistic row, and
+  leaves a 16 MiB buffer whose pages stay untouched unless rows really do
+  get that large.
 
 If real use cases require more, the limits can later become configurable.
 

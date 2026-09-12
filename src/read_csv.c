@@ -66,7 +66,9 @@ static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
      spare slot is what lets a file over the cap be told from one at it
      (design SS15, decision 12). */
   opts.max_columns = ZUCSV_MAX_COLS + 1;
-  opts.max_row_size = ZUCSV_MAX_ROW_SIZE;
+  /* zsv sizes its scan buffer at 2 * max_row_size, and that buffer is the
+     real limit on a record, so halve ours to land on ZUCSV_MAX_ROW_SIZE. */
+  opts.max_row_size = ZUCSV_MAX_ROW_SIZE / 2;
 
   r->parser = zsv_new(&opts);
   if (!r->parser)
@@ -218,6 +220,10 @@ static SEXP zucsv_read_body(void *data) {
   zucsv_type *types = NULL;
   zucsv_infer *infer = NULL;
 
+  /* Every PROTECT below bumps nprotect and each return unwinds exactly that
+     many, so the count never has to be kept in step by hand. The body of an
+     R_UnwindProtect must leave the stack balanced. */
+
   /* ================= pass 1: inspect and validate ================= */
   SEXP names = R_NilValue;
   zucsv_open(&ctx->reader, ctx->path, ctx->delim);
@@ -313,10 +319,14 @@ static SEXP zucsv_read_body(void *data) {
      zero-row data frame (design SS14). */
   if (ncol == 0) {
     SEXP out = PROTECT(Rf_allocVector(VECSXP, 0));
+    nprotect++;
     Rf_setAttrib(out, R_NamesSymbol, PROTECT(Rf_allocVector(STRSXP, 0)));
+    nprotect++;
     Rf_setAttrib(out, R_RowNamesSymbol, PROTECT(Rf_allocVector(INTSXP, 0)));
+    nprotect++;
     Rf_classgets(out, PROTECT(Rf_mkString("data.frame")));
-    UNPROTECT(4 + nprotect);
+    nprotect++;
+    UNPROTECT(nprotect);
     return out;
   }
 
@@ -425,10 +435,12 @@ static SEXP zucsv_read_body(void *data) {
     INTEGER(rn)[0] = NA_INTEGER;
     INTEGER(rn)[1] = -(int)nrow;
   }
+  nprotect++;
   Rf_setAttrib(out, R_RowNamesSymbol, rn);
   Rf_classgets(out, PROTECT(Rf_mkString("data.frame")));
+  nprotect++;
 
-  UNPROTECT(2 + nprotect);
+  UNPROTECT(nprotect);
   return out;
 }
 

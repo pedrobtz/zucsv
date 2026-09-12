@@ -3,3 +3,4 @@ docs
 *.tar.gz
 tests/testthat/_problems
 .Rproj.user
+bench/results.rds
