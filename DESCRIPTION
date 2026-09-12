@@ -1,13 +1,26 @@
 Package: zucsv
-Title: What the Package Does (One Line, Title Case)
+Title: Read CSV Files Using the 'zsv' Parser
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Authors@R: c(
+    person("pedrobtz", email = "pedrobtz@gmail.com", role = c("aut", "cre")),
+    person("Guarnerix Inc dba Liquidaty", role = "cph",
+           comment = "Author of the bundled 'zsv' library")
+  )
+Description: Reads comma-separated and other delimited text files into base R
+    data frames using the 'zsv' C parser <https://github.com/liquidaty/zsv> as
+    its native backend. Handles quoted fields, embedded delimiters and
+    newlines, escaped quotes, and both LF and CRLF line endings, and infers
+    logical, integer, double, and character column types. Column types can
+    also be given explicitly, in which case a value that cannot be converted
+    is an error rather than a silently missing value. The 'zsv' sources are
+    bundled, so there are no runtime dependencies.
 License: MIT + file LICENSE
 Encoding: UTF-8
+Depends: R (>= 4.2.0)
+URL: https://github.com/pedrobtz/zucsv
+BugReports: https://github.com/pedrobtz/zucsv/issues
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 8.0.0
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

@@ -1,9 +1,10 @@
 # zucsv — Design for v0.1.0
 
-**Status:** Draft  
+**Status:** Draft, revised 2026-09-12 (decisions taken in the revision are listed in §29)  
 **Backend:** vendored `zsv` / `libzsv`  
 **Primary API:** `read_csv()`  
-**Scope:** small, read-only first release
+**Scope:** small, read-only first release, shipped to CRAN  
+**Roadmap:** `ROADMAP.md`
 
 ## 1. Purpose
 
@@ -37,7 +38,9 @@ The first release should:
 - allow callers to force column types when inference is undesirable;
 - provide deterministic errors for malformed table structure or failed type conversion;
 - build on normal R toolchains on Linux, macOS, and Windows;
-- have no mandatory R package dependencies.
+- have no mandatory R package dependencies;
+- pass `R CMD check --as-cran` with no warnings or notes and be accepted on CRAN (§25);
+- run on R >= 4.2.0 (see §4, `file`, for the reason).
 
 The implementation should favor correctness, simple ownership rules, and testability over exposing every feature available in `zsv`.
 
@@ -49,6 +52,7 @@ The first release will intentionally not provide:
 - `read_tsv()` as a separate exported function;
 - URL input;
 - R connections;
+- raw-vector or string input;
 - compressed-file handling;
 - automatic decompression;
 - date, time, or datetime inference;
@@ -63,7 +67,14 @@ The first release will intentionally not provide:
 - an exposed SIMD/fast-parser switch;
 - ALTREP-backed columns;
 - lazy parsing;
-- schema metadata beyond ordinary R column types.
+- schema metadata beyond ordinary R column types;
+- a `quote` argument (`"` is always the quote character);
+- comment lines;
+- whitespace trimming of any kind;
+- an `encoding` argument or transcoding;
+- a toggle for the blank-row policy (§10 fixes it);
+- tibble or `data.table` output;
+- linking against a system-installed `zsv`.
 
 These features can be considered only after the basic parser-to-R boundary is stable.
 
@@ -83,24 +94,26 @@ read_csv(
 
 ### `file`
 
-A length-one character path to a local file.
+A length-one, non-missing character path to an existing local file.
 
-For v0.1, paths are the only supported input source. Restricting input to seekable local files makes the implementation substantially simpler and permits an exact two-pass allocation strategy.
+For v0.1, paths are the only supported input source. Restricting input to local files makes the implementation substantially simpler and permits an exact two-pass allocation strategy.
 
-The file is opened in binary mode by the native implementation.
+The R wrapper applies `path.expand()` so `~/data.csv` works. The C side obtains the native path with `translateChar()` and opens it with `fopen(path, "rb")`. A directory or unreadable path is reported as `Cannot open CSV file: <path>`.
+
+The package requires R >= 4.2.0. From that version the native encoding on Windows is UTF-8, so non-ASCII paths open correctly without a `_wfopen` code path, and every supported platform agrees that strings handed to R are UTF-8.
 
 ### `header`
 
-A length-one logical value.
+A length-one, non-missing logical value.
 
-- `TRUE`: the first parsed row supplies column names.
-- `FALSE`: all rows are data and names are generated as `V1`, `V2`, ... `Vn`.
+- `TRUE`: the first parsed record supplies column names.
+- `FALSE`: all records are data and names are generated as `V1`, `V2`, ... `Vn`.
 
 Header values are always treated as text and are never subject to `na` matching or type inference.
 
 ### `delimiter`
 
-A length-one, single-byte character string. The default is `","`.
+A length-one character string consisting of exactly one ASCII byte (`nchar(delimiter, type = "bytes") == 1` and the byte is below `0x80`). The default is `","`.
 
 This allows semicolon-, tab-, and pipe-delimited files without adding more exported functions in v0.1:
 
@@ -109,17 +122,17 @@ read_csv("data.tsv", delimiter = "\t")
 read_csv("data.txt", delimiter = ";")
 ```
 
-Newline, carriage return, form feed, NUL, and quote are rejected as delimiters.
+Newline, carriage return, form feed, NUL, the double quote, and any multi-byte character are rejected as delimiters.
 
 ### `na`
 
-A character vector of exact cell values that should become missing values. The default is:
+A character vector of exact cell values that should become missing values, or `NULL`. The default is:
 
 ```r
 c("", "NA")
 ```
 
-Matching occurs after CSV unquoting. Therefore quoted and unquoted forms are treated identically:
+Matching occurs after CSV unquoting and is a bytewise comparison against the UTF-8 form of each `na` element (the C side translates `na` with `translateCharUTF8()` once). Therefore quoted and unquoted forms are treated identically:
 
 ```text
 NA
@@ -128,7 +141,7 @@ NA
 
 both become missing values under the default configuration.
 
-`na = NULL` disables missing-value matching.
+`na = NULL` disables missing-value matching. `NA_character_` elements in `na` are an error.
 
 No whitespace trimming is performed before matching in v0.1.
 
@@ -138,7 +151,7 @@ Controls column conversion.
 
 `NULL` means infer column types from the complete file.
 
-A character vector may force types. Supported values are:
+A character vector may force types. Supported values are exactly:
 
 ```text
 logical
@@ -162,13 +175,27 @@ read_csv(
 )
 ```
 
-No shorthand type codes and no named partial specifications are supported in v0.1.
+Unknown type names are rejected by the R wrapper before the file is opened. The length is checked in C once the column count is known:
+
+```text
+col_types has length 3 but the CSV has 5 columns
+```
+
+No shorthand type codes, no aliases such as `"numeric"`, and no named partial specifications are supported in v0.1.
 
 ## 5. Return value
 
 `read_csv()` returns an ordinary base R `data.frame`.
 
-The implementation constructs the data frame directly as a named list of equal-length vectors and assigns the standard `data.frame` class and compact row names. It should not route through `data.frame()` and should not perform factor conversion.
+The implementation constructs the data frame directly as a named list of equal-length vectors and assigns:
+
+- `names`: header names (or `V1..Vn`) as UTF-8 `CHARSXP`s;
+- `row.names`: the compact form `c(NA_integer_, -nrow)`, or `integer(0)` when there are no rows;
+- `class`: `"data.frame"`.
+
+It should not route through `data.frame()` and should not perform factor conversion.
+
+Character cells become `CHARSXP`s created with `mkCharLenCE(ptr, len, CE_UTF8)`; missing cells are `NA_STRING`, `NA_LOGICAL`, `NA_INTEGER`, or `NA_REAL` according to the column type.
 
 Column names from a header are preserved exactly in v0.1, including duplicates and empty names. No automatic name repair is performed. This avoids silently changing information from the source file and keeps name policy outside the CSV parser.
 
@@ -224,7 +251,13 @@ SEXP C_read_csv(
 );
 ```
 
-Native symbols must be registered in `src/init.c`, and dynamic symbol lookup should be disabled.
+Rules for the native layer:
+
+- every C file defines `R_NO_REMAP` before including R headers and uses `Rf_`-prefixed names;
+- only entry points documented in *Writing R Extensions* are used (`R CMD check` on R >= 4.5 flags non-API entry points);
+- `src/init.c` registers the routine in an `R_CallMethodDef` table via `R_registerRoutines()`, then calls `R_useDynamicSymbols(dll, FALSE)` and `R_forceSymbols(dll, TRUE)`;
+- `R/zucsv-package.R` carries `@useDynLib zucsv, .registration = TRUE`, which makes the registered routine available as the R object `C_read_csv`;
+- `PROTECT`/`UNPROTECT` usage must be balanced on every path so the code is clean under `rchk` (§25).
 
 The R wrapper remains intentionally thin:
 
@@ -234,11 +267,13 @@ read_csv <- function(file,
                      delimiter = ",",
                      na = c("", "NA"),
                      col_types = NULL) {
+  # argument checks producing R-level errors, then:
+  file <- path.expand(file)
   .Call(C_read_csv, file, header, delimiter, na, col_types)
 }
 ```
 
-Argument validation that affects native safety should still be repeated or enforced in C.
+Argument validation that affects native safety must be repeated in C; the R checks exist to give good messages, not to protect the C code.
 
 ## 8. Parser API choice
 
@@ -257,6 +292,8 @@ while (zsv_next_row(parser) == zsv_status_row) {
 
 The pull API is preferred because it gives the R wrapper an ordinary sequential control flow, makes error handling easier, and avoids invoking R-oriented logic from parser callbacks.
 
+The parser is fed from the `FILE *` through `zsv`'s read callback (`fread`-compatible). The vendoring step (§17) must confirm that the pinned upstream commit provides the pull API and record that fact; if it does not, the push API driving the same per-row function is the fallback, and the design above is otherwise unchanged.
+
 The push API can be benchmarked later, but it is not needed to establish the package architecture.
 
 ## 9. Two-pass reading strategy
@@ -265,30 +302,33 @@ v0.1 should use two complete parsing passes over the file.
 
 This is a deliberate simplification enabled by accepting only local file paths.
 
-### Pass 1: inspect
+### Pass 1: inspect and validate
 
-The first pass:
+The first pass does *all* validation so that pass 2 cannot fail on the content of the file:
 
-1. reads the header, if present;
-2. determines the expected number of columns;
-3. counts data rows;
-4. verifies that every data row has the expected width;
-5. applies `na` matching;
-6. infers column types when `col_types = NULL`;
-7. validates forced values when useful to do so early;
-8. checks size limits before allocating R vectors.
+1. skips a UTF-8 BOM (§13) and reads the header, if present;
+2. determines the expected number of columns and checks it against the column cap and `col_types` length;
+3. counts data records, skipping blank records (§10);
+4. verifies that every data record has the expected width;
+5. rejects embedded NUL bytes;
+6. applies `na` matching;
+7. infers column types when `col_types = NULL`, or validates every non-missing cell against the forced type;
+8. validates UTF-8 in cells that will become character values (§13);
+9. checks size limits (§15) before any R vector is allocated.
 
-No full R data frame is constructed during this pass.
+No R data frame is constructed during this pass.
 
 ### Pass 2: materialize
 
-The second pass:
+The second pass reopens or rewinds the file and:
 
 1. allocates each R column at its exact final length;
 2. parses the file again;
 3. converts each cell directly into the destination R vector;
 4. constructs character strings only for character columns;
 5. assigns names, row names, and the `data.frame` class.
+
+Pass 2 must re-check the record count and widths against pass 1 as it goes and error with `CSV file changed while it was being read` if they disagree. That keeps a concurrent modification from turning into an out-of-bounds write. Any other conversion failure in pass 2 is an internal error, because pass 1 already validated the content.
 
 The resulting data path is:
 
@@ -306,16 +346,22 @@ preallocated R column
 
 This avoids growable R columns, repeated vector copying, temporary row lists, and complicated type widening during materialization.
 
-The cost is parsing the file twice. For the initial implementation, the simpler allocation and ownership model is worth that tradeoff. Benchmarks should later determine whether a one-pass column builder is worthwhile.
+The cost is parsing the file twice and running the numeric grammar checks twice. For the initial implementation, the simpler allocation and ownership model is worth that tradeoff. Benchmarks should later determine whether a one-pass column builder is worthwhile.
 
-## 10. Column-width semantics
+## 10. Records, column width, and blank rows
+
+### Record numbering
+
+Error messages refer to *records*, not lines, because a quoted field can span lines. Records are numbered from 1 in the order `zsv` emits them, including the header record and skipped blank records. So with `header = TRUE` the first data record is record 2. This matches what a user sees when stepping through the file with a CSV-aware viewer.
+
+### Column width
 
 The expected number of columns is established by:
 
-- the header row when `header = TRUE`;
-- the first data row when `header = FALSE`.
+- the header record when `header = TRUE`;
+- the first non-blank data record when `header = FALSE`.
 
-Every subsequent row must contain exactly that number of cells.
+Every subsequent non-blank record must contain exactly that number of cells.
 
 A mismatch is an error:
 
@@ -326,6 +372,18 @@ CSV row 42 has 6 fields; expected 5
 Although `zsv` itself can parse tables with inconsistent row widths, `zucsv` v0.1 deliberately requires a rectangular table because every R data-frame column must have the same length.
 
 Future versions may add an explicit ragged-row policy such as padding short rows with `NA`, but v0.1 must not silently invent that policy.
+
+### Blank rows
+
+A *blank record* is a record with no bytes at all between its line terminators (a trailing terminator at end of file does not create a record). Blank records are skipped everywhere: they do not count as data rows and do not trigger a width error. This makes files that end in `\n\n`, or that contain an empty line between blocks, read without complaint, and matches the default of the other common R readers.
+
+Consequences to document and test:
+
+- a record containing only whitespace or only delimiters is *not* blank; it is a record of one or more empty cells and is subject to the width check;
+- in a single-column file an intentional empty cell must therefore be written as `""` to survive; an unquoted empty line is skipped;
+- with `header = TRUE`, the header is the first non-blank record.
+
+`zsv`'s own treatment of empty lines must be confirmed with fixtures during vendoring (§17); the policy above is `zucsv`'s and must hold regardless of what the parser emits.
 
 ## 11. Type inference
 
@@ -348,9 +406,11 @@ otherwise    → character
 
 A column containing only missing values becomes `character` in v0.1 because there is no evidence for a narrower type.
 
+Grammar checks operate on the raw `{pointer, length}` cell without copying or modifying it. A cell is only converted once its column type is fixed (pass 2).
+
 ### Logical syntax
 
-Recognize only:
+Recognize only these four exact strings:
 
 ```text
 TRUE
@@ -359,31 +419,33 @@ true
 false
 ```
 
-Values `0`, `1`, `T`, `F`, `yes`, and `no` are not logical syntax in v0.1.
+Values `T`, `F`, `True`, `0`, `1`, `yes`, and `no` are not logical syntax in v0.1.
 
 ### Integer syntax
 
-Integers use base-10 syntax with an optional leading sign and no grouping separator:
-
 ```text
-0
-42
--17
-+9
+[+-]? [0-9]+
 ```
 
-A value must fit in R's integer range to keep the column as integer. A syntactically integral value outside that range promotes the column to double if it is exactly acceptable under the numeric parser.
+Base-10, optional leading sign, no grouping separator, leading zeros permitted (`007` is `7L`, as with `utils::type.convert()`).
+
+The value must lie in `[-2147483647, 2147483647]`; `-2147483648` is `NA_integer_` in R and is out of range. Conversion accumulates into a 64-bit integer with an overflow check, so no libc call is needed. A syntactically integral value outside the range promotes the column to double during inference and is a conversion error when `integer` is forced.
+
+Examples: `0`, `42`, `-17`, `+9`.
 
 ### Double syntax
 
-Basic decimal and scientific notation are supported using `.` as the decimal separator:
-
 ```text
-1.5
--0.25
-6.02e23
-1E-8
+[+-]? ( [0-9]+ ( '.' [0-9]* )? | '.' [0-9]+ ) ( [eE] [+-]? [0-9]+ )?
+| [+-]? 'Inf'
+| 'NaN'
 ```
+
+Using `.` as the decimal separator. `Inf`, `-Inf`, `+Inf`, and `NaN` are accepted, case-sensitively, because `write.csv()` produces them and base R output must round-trip. `inf`, `Infinity`, `nan`, hexadecimal floats, and leading or trailing whitespace are not double syntax.
+
+Conversion happens only after the grammar check passes. It copies the cell into a NUL-terminated scratch buffer and calls `R_strtod()`, the R API routine used by `as.numeric()`, so values match base R exactly and do not depend on `LC_NUMERIC`.
+
+Examples: `1.5`, `-0.25`, `6.02e23`, `1E-8`, `.5`, `5.`.
 
 Locale-specific decimal commas and thousands separators are not supported in v0.1.
 
@@ -403,35 +465,49 @@ Conversion failure is an error, not a warning followed by `NA`:
 Cannot parse row 18, column 3 ("amount") as double: "12 USD"
 ```
 
+The column name is the header name or the generated `V<n>`. The offending value is truncated in the message (§20).
+
 This strict behavior prevents silent data loss and keeps v0.1 semantics easy to reason about.
 
-`character` always accepts a non-NUL cell.
+`character` always accepts a non-NUL, valid-UTF-8 cell.
 
 ## 13. Text and encoding
 
 v0.1 treats text input as UTF-8.
 
-A UTF-8 BOM at the beginning of the file should be ignored before interpreting the first field or header name.
+A UTF-8 BOM (`EF BB BF`) at the beginning of the file is ignored before interpreting the first field or header name. Whether `zsv` already strips it is a vendoring question (§17); `zucsv` guarantees the result either way.
+
+Strings handed to R are created with `mkCharLenCE(..., CE_UTF8)`. Cells that fail the primitive grammars — the only cells that can carry non-ASCII bytes into R — and header names are validated as UTF-8 in pass 1. Invalid sequences are an error:
+
+```text
+CSV contains invalid UTF-8 at row 8, column 4 ("name")
+```
+
+Erroring is preferred over marking bad bytes as UTF-8, which would defer the failure to a later `nchar()` or `print()` with a far less useful message. An `encoding` argument is the v0.2 escape hatch.
 
 No encoding argument or transcoding is provided in v0.1. Supporting Latin-1, Windows code pages, UTF-16, and encoding detection is outside scope.
 
-Embedded NUL bytes in a cell should result in an error rather than being passed into ordinary R character strings.
+Embedded NUL bytes in a cell are an error rather than being passed into ordinary R character strings.
 
 ## 14. Empty files and edge cases
 
 Required behavior:
 
 - an empty file returns a zero-column, zero-row `data.frame`;
+- a file consisting only of blank records is treated as empty;
 - a header-only file returns zero rows with one character column for each header field;
-- `header = FALSE` on an empty file returns a zero-column, zero-row `data.frame`;
-- an empty data cell is `NA` under the default `na` setting;
+- `header = FALSE` on a one-record file returns one row of data;
+- an empty data cell is `NA` under the default `na` setting, whether written as nothing or as `""`;
+- with `na = NULL` an empty cell is the empty string and makes its column `character`;
+- a trailing delimiter (`a,b,`) yields a final empty cell, so the record has three fields;
 - quoted delimiters remain part of the cell value;
-- escaped quotes are unescaped by `zsv`;
-- embedded newlines in quoted fields remain part of the cell value;
-- CRLF and LF input must both be accepted;
-- header names are never interpreted as missing values.
+- escaped quotes (`""` inside a quoted field) are unescaped by `zsv`;
+- embedded newlines in quoted fields remain part of the cell value, including a CR LF pair;
+- CRLF and LF input must both be accepted; a final record without a trailing terminator is still a record;
+- header names are never interpreted as missing values;
+- `" 42"` (leading space) is not numeric syntax and makes its column `character`.
 
-Blank-row behavior should be locked down with explicit fixtures matching the chosen `zsv` parser semantics before release rather than being left accidental.
+Blank-record behavior (§10) and unbalanced-quote behavior must be locked down with explicit fixtures matching the vendored `zsv` semantics before release rather than being left accidental.
 
 ## 15. Resource limits
 
@@ -439,20 +515,24 @@ The wrapper should use explicit resource checks rather than relying on accidenta
 
 At minimum it must guard against:
 
-- row counts that cannot fit in an R long vector;
-- column counts beyond a package-defined safety limit;
+- more than `2147483647` data rows — the practical `data.frame` limit, because compact row names and `nrow()` are integers (this is stricter than `R_XLEN_T_MAX`);
+- more than the package column cap;
 - multiplication overflow when computing sizes;
-- R vector lengths beyond `R_XLEN_T_MAX`;
-- native allocation failures reported by `zsv`;
-- parser limits encountered by `zsv`.
+- native allocation failures reported by `zsv` (`zsv_new()` returning `NULL`, out-of-memory statuses);
+- parser limits encountered by `zsv`, in particular its maximum row size.
 
-`zsv` exposes a configurable maximum column count. `zucsv` should set an intentional internal value rather than silently inheriting an upstream default. A reasonable initial safety cap is 65,536 columns. If real use cases require more, the limit can later become configurable.
+`zsv` exposes configurable maximum column and row sizes. `zucsv` sets intentional internal values rather than silently inheriting upstream defaults:
+
+- maximum columns: 65,536 (`CSV exceeds zucsv's maximum of 65536 columns`);
+- maximum record size: a deliberately generous fixed value chosen during vendoring once the upstream behavior for oversize rows is understood; exceeding it is an error that names the record.
+
+If real use cases require more, the limits can later become configurable.
 
 ## 16. Interrupts and cleanup
 
 Large reads must remain interruptible.
 
-The native loop should call `R_CheckUserInterrupt()` periodically, for example every 16,384 rows, rather than for every row.
+The native loops in both passes call `R_CheckUserInterrupt()` periodically, for example every 16,384 records, rather than for every record.
 
 All native resources must be released on both success and R errors:
 
@@ -460,47 +540,69 @@ All native resources must be released on both success and R errors:
 - `zsv_parser` instances;
 - native temporary allocations.
 
-The implementation should structure cleanup so that R long jumps cannot leak resources. `R_UnwindProtect()` or an equivalent disciplined cleanup pattern should be used where needed.
+The cleanup discipline for v0.1:
+
+- all `zucsv`-owned scratch memory (per-column inference state, the translated `na` table, the numeric scratch buffer) is allocated with `R_alloc()`, which R frees automatically when `.Call` returns or unwinds — so it never needs explicit cleanup;
+- the two resources that are not R-managed, the `FILE *` and the `zsv_parser`, live in a single reader struct;
+- the parse runs inside `R_UnwindProtect()` with a cleanup function that closes and deletes whatever is non-`NULL` in that struct and then continues the unwind with `R_ContinueUnwind()`. `Rf_error()` and `R_CheckUserInterrupt()` both long-jump, so every error and interrupt goes through this cleanup.
 
 ## 17. Vendoring `zsv`
 
 Vendor only the minimum library subset required by the parser.
 
-Suggested layout:
+Layout:
 
 ```text
 zucsv/
 ├── DESCRIPTION
 ├── NAMESPACE
+├── NEWS.md
+├── LICENSE                     # MIT template for zucsv itself
+├── LICENSE.md
+├── LICENSE.note                # points out the bundled zsv license
+├── cran-comments.md
 ├── R/
-│   └── read_csv.R
+│   ├── read_csv.R
+│   └── zucsv-package.R
 ├── src/
+│   ├── Makevars
+│   ├── Makevars.win
 │   ├── init.c
 │   ├── read_csv.c
 │   ├── convert.c
 │   ├── zucsv.h
 │   └── vendor/
 │       └── zsv/
+│           ├── UPSTREAM        # repo, tag, commit, date, patch list
+│           ├── LICENSE
 │           ├── include/
-│           ├── src/
-│           └── LICENSE
+│           └── src/
+├── inst/
+│   └── COPYRIGHTS              # copyright holders of the bundled code
 ├── tests/
 │   └── testthat/
-├── tools/
-│   └── update-zsv.sh
-└── inst/
-    └── LICENSE.note
+└── tools/
+    ├── update-zsv.sh           # re-vendors a given commit and re-applies patches
+    └── patches/                # minimal, documented patches to upstream
 ```
 
-The vendored source should be pinned to a known upstream commit or release. Record:
+The vendored source is pinned to a known upstream commit or release. `src/vendor/zsv/UPSTREAM` records:
 
 - upstream repository;
 - version/tag if available;
 - exact commit hash;
 - vendoring date;
-- local patches, if any.
+- local patches, each with a one-line reason.
 
-Avoid local modifications to upstream source where possible. Put R-specific adaptation in `zucsv` wrapper files.
+Avoid local modifications to upstream source where possible. Put R-specific adaptation in `zucsv` wrapper files. Where a patch is unavoidable — typically for CRAN compliance (§25) — keep it as a file in `tools/patches/` so `tools/update-zsv.sh` can re-apply it on the next upgrade, and report it upstream when it is a genuine fix.
+
+Vendoring must include an audit of the subset for:
+
+- calls CRAN forbids in package code: `exit`, `abort`, `assert` (compiles to `abort` unless `NDEBUG`), `printf`/`puts`/`fprintf(stderr, ...)`, `rand`/`srand`;
+- compiler warnings under `-Wall -pedantic -Wstrict-prototypes` with GCC and Clang, and under C23 (`R CMD check` on R-devel);
+- anything requiring `-march`/`-mavx*` flags or a non-standard `-std=` for correctness;
+- GNU make constructs, since `src/Makevars` must work with a POSIX `make` unless `SystemRequirements: GNU make` is declared;
+- the behaviors `zucsv` relies on and must confirm: pull API availability, empty-line records, BOM handling, oversize-row status, unbalanced-quote recovery.
 
 ## 18. Parser mode for v0.1
 
@@ -520,7 +622,7 @@ only if benchmarks show a meaningful end-to-end improvement after R allocation a
 
 ## 19. Build strategy
 
-The package should always build against its vendored `zsv` copy in v0.1.
+The package always builds against its vendored `zsv` copy in v0.1.
 
 Do not search for a system-installed `zsv` library. A single known backend version makes CRAN builds and bug reports reproducible.
 
@@ -530,9 +632,16 @@ Target standard R compilation environments:
 - Apple Clang on macOS;
 - GCC via Rtools on Windows.
 
+`src/Makevars` rules:
+
+- list every object file explicitly in `OBJECTS` (including `vendor/zsv/src/*.o`); no `$(wildcard)`, `$(shell)`, or other GNU make features;
+- set include paths through `PKG_CPPFLAGS` (`-I. -Ivendor/zsv/include`) and any feature macros `zsv` needs;
+- never set optimization or architecture flags (`-O3`, `-march=native`, `-mavx2`) and never suppress diagnostics (`-w`, `-Wno-*`) — CRAN rejects both;
+- `Makevars.win` mirrors `Makevars`.
+
 Optional architecture-specific optimization must not be required for correctness.
 
-Compiler warnings should be enabled during development, and CI should treat warnings from `zucsv` code seriously while avoiding unnecessary edits to vendored upstream code.
+Compiler warnings should be enabled during development (`-Wall -Wextra -pedantic -Wstrict-prototypes` via `~/.R/Makevars`), and CI should treat warnings from `zucsv` code as failures. Warnings from vendored code that surface under CRAN's flags are fixed with patches (§17), not silenced.
 
 ## 20. Error model
 
@@ -553,16 +662,33 @@ Cannot parse row 19, column 2 ("count") as integer: "1.5"
 ```
 
 ```text
-CSV contains an embedded NUL at row 8, column 4
+CSV contains an embedded NUL at row 8, column 4 ("notes")
+```
+
+```text
+CSV contains invalid UTF-8 at row 8, column 4 ("name")
 ```
 
 ```text
 CSV exceeds zucsv's maximum of 65536 columns
 ```
 
-Do not expose raw `zsv` status codes as the primary user-facing message. Preserve them internally where useful for diagnostics.
+```text
+col_types has length 3 but the CSV has 5 columns
+```
+
+Conventions:
+
+- "row" means record as defined in §10;
+- columns are 1-based and carry the column name in parentheses when one exists;
+- cell values quoted in a message are truncated to 40 bytes with a trailing `...` and never include NUL bytes;
+- all errors are raised with `Rf_error()` after native cleanup (§16), never with `Rf_warning()` followed by `NA`.
+
+Do not expose raw `zsv` status codes as the primary user-facing message. Preserve them internally where useful for diagnostics (for example by appending `zsv_parse_status_desc()` output to allocation and parser-limit errors).
 
 ## 21. Testing strategy
+
+Fixtures are written by tests into `tempfile()` with `writeBin()` so line endings, BOMs, NULs, and invalid bytes are exact; there is no `withr` or `readr` dependency in `Suggests`.
 
 ### R-level unit tests
 
@@ -573,43 +699,51 @@ Test at least:
 - single-column input;
 - quoted commas;
 - escaped quotes;
-- embedded newlines;
-- CRLF and LF line endings;
-- empty cells;
+- embedded newlines, LF and CRLF;
+- CRLF and LF line endings, with and without a final terminator;
+- trailing delimiter;
+- blank records: trailing, interior, leading, and an all-blank file;
+- whitespace-only and delimiter-only records (width errors);
+- empty cells, unquoted and `""`;
 - `NA` cells;
-- custom `na` values;
+- custom `na` values and `na = NULL`;
 - duplicate and empty column names;
-- UTF-8 strings;
+- UTF-8 strings in cells, header names, and the file path (including `~` expansion);
 - UTF-8 BOM;
-- logical inference;
-- integer inference;
-- integer overflow to double;
-- double inference;
-- scientific notation;
-- character fallback;
+- invalid UTF-8 (error);
+- embedded NUL (error);
+- logical inference and the rejected spellings (`T`, `True`, `1`);
+- integer inference, leading zeros, `+` sign;
+- integer overflow to double, including `-2147483648`;
+- double inference, `.5`, `5.`, scientific notation, `Inf`, `-Inf`, `NaN`;
+- character fallback, including `" 42"`;
 - all-missing columns;
-- forced column types;
-- failed forced conversions;
-- inconsistent row widths;
+- forced column types for all four types, length 1 and length `ncol`;
+- `col_types` length mismatch and unknown names;
+- failed forced conversions, with the exact error message;
+- inconsistent row widths, with the exact error message;
 - header-only files;
 - empty files;
+- invalid `delimiter` values;
 - long cells;
-- many rows;
-- many columns up to the supported limit.
+- many rows (modest on CRAN; larger under `skip_on_cran()`);
+- many columns up to the supported limit, and one beyond it.
 
 ### Differential tests
 
-For canonical, standards-compliant fixtures, compare values with `utils::read.csv()` where semantics overlap.
+For canonical, standards-compliant fixtures, compare values with `utils::read.csv(..., check.names = FALSE, stringsAsFactors = FALSE, na.strings = c("", "NA"))` where semantics overlap.
 
 Differential tests should compare parsed values, not require identical type-guessing or name-repair policies when those intentionally differ.
 
+A randomized round-trip test (`write.csv()` of generated data frames → `read_csv()` → `identical()`) exercises the numeric grammars and quoting cheaply; keep it deterministic with a fixed seed.
+
 ### Upstream behavior tests
 
-Include a small set of fixtures exercising the real-world quoting cases that motivated choosing `zsv`. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.
+Include a small set of fixtures exercising the real-world quoting cases that motivated choosing `zsv`, plus the confirmed empty-line, BOM, and unbalanced-quote behaviors from §17. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.
 
-### Sanitizers
+### Sanitizers and static analysis
 
-Development CI should periodically run the native code with AddressSanitizer and UndefinedBehaviorSanitizer where supported.
+Development CI runs the native code under AddressSanitizer and UndefinedBehaviorSanitizer (e.g. the `rocker/r-devel-san` image), and the `PROTECT` discipline is checked with `rchk` before every CRAN submission (R-hub offers both).
 
 ### Fuzzing
 
@@ -659,6 +793,8 @@ data.table::fread()
 zucsv::read_csv()
 ```
 
+Benchmark scripts live outside the package build (`bench/`, listed in `.Rbuildignore`) so the comparison packages never enter `Suggests`.
+
 The goal of v0.1 is not to beat every established reader. The first performance requirement is that the native design does not introduce obvious avoidable overhead. Parser-only speed is less important than end-to-end time after R strings, vectors, type conversion, and the deliberate second pass are included.
 
 ## 23. Package dependencies
@@ -666,46 +802,49 @@ The goal of v0.1 is not to beat every established reader. The first performance 
 The target dependency structure is:
 
 ```text
-R
+R (>= 4.2.0)
 └── zucsv
     └── vendored zsv C sources
 ```
 
 No runtime R package dependencies are required.
 
-`testthat` may be used under `Suggests` for tests. Benchmark-only packages should also remain optional.
+`testthat` is the only `Suggests` entry needed for tests. Benchmark-only packages stay out of `DESCRIPTION` entirely (§22).
 
 ## 24. Initial file-level implementation plan
 
 ### `R/read_csv.R`
 
 - exported `read_csv()` wrapper;
-- lightweight argument normalization;
+- lightweight argument normalization and R-level errors for bad argument shapes;
+- `path.expand()`;
 - `.Call()` invocation;
-- roxygen documentation.
+- roxygen documentation with `@return` and runnable `@examples`.
 
 ### `src/read_csv.c`
 
-- file opening;
-- parser configuration;
+- `C_read_csv()` entry point;
+- reader struct, `R_UnwindProtect()` body and cleanup;
+- file opening and parser configuration;
 - pass 1 and pass 2 orchestration;
-- row-width validation;
+- record numbering, blank-record skipping, width validation;
 - data-frame construction;
-- error context.
+- error context and message formatting.
 
 ### `src/convert.c`
 
-- NA matching;
-- logical recognition;
-- integer recognition/conversion;
-- double recognition/conversion;
+- NA table construction and matching;
+- logical, integer, and double grammar checks on `{pointer, length}` cells;
+- integer accumulation with overflow detection;
+- `R_strtod()` conversion via scratch buffer;
+- UTF-8 validation;
 - character materialization;
-- type inference state.
+- per-column inference state and final type selection.
 
 ### `src/zucsv.h`
 
 - internal types;
-- constants;
+- constants (column cap, record-size cap, interrupt interval, message truncation length);
 - conversion enums;
 - parser-pass state structures.
 
@@ -713,12 +852,46 @@ No runtime R package dependencies are required.
 
 - native routine registration.
 
+### `src/Makevars`, `src/Makevars.win`
+
+- explicit object list and include paths (§19).
+
 ### `src/vendor/zsv/`
 
-- unmodified vendored parser subset;
-- upstream license.
+- vendored parser subset, upstream license, `UPSTREAM` record.
 
-## 25. Definition of done for v0.1
+## 25. CRAN requirements
+
+CRAN acceptance is a v0.1 goal, and several of its policies shape the code rather than just the paperwork. Consolidated here so nothing is discovered at submission time.
+
+### Metadata and licensing
+
+- `Title` in title case, no trailing period; `Description` is a paragraph that names `'zsv'` in single quotes with its URL in angle brackets and does not start with "This package".
+- `Authors@R` lists the `zsv` copyright holder with `role = "cph"`; `inst/COPYRIGHTS` states which files are theirs and under which license; `LICENSE.note` points there. CRAN requires copyright of bundled code to be unambiguous from `DESCRIPTION` alone.
+- `LICENSE` holds only the MIT `YEAR`/`COPYRIGHT HOLDER` lines; `LICENSE.md` stays in `.Rbuildignore`.
+- `Depends: R (>= 4.2.0)`; `URL` and `BugReports` set.
+- `.Rbuildignore` covers every non-standard top-level file (`zucsv-design.md`, `ROADMAP.md`, `CLAUDE.md`, `bench/`, `_pkgdown.yml`, `.github/`).
+
+### Compiled code
+
+- No `exit`, `abort`, `assert`, `printf`-family output to stdout/stderr, or `rand` anywhere under `src/`, vendored code included.
+- Only documented R API entry points; `R_NO_REMAP` everywhere.
+- Clean under `-Wall -pedantic -Wstrict-prototypes` on GCC and Clang, under C23, and under `_R_CHECK_COMPILATION_FLAGS_`; no flag or diagnostic suppression in `Makevars`.
+- Clean under ASan/UBSan, valgrind, and `rchk`. CRAN runs these after acceptance and asks for fixes within two weeks.
+- No GNU make features without `SystemRequirements: GNU make`.
+
+### Documentation and tests
+
+- Every exported function has `\value` (roxygen `@return`) and examples that run in under a few seconds without network or non-temp files.
+- Tests write only under `tempdir()` and finish quickly on CRAN; large inputs are behind `skip_on_cran()`.
+- `NEWS.md` and `cran-comments.md` exist; `README.md` has a real example.
+
+### Process
+
+- `R CMD check --as-cran` on current R-devel is clean (no WARNINGs, no NOTEs beyond "new submission") on Linux, macOS, and Windows before submitting.
+- First submissions get a human review; the usual requests concern `Description` wording, `\value`, examples, and bundled-code copyright — all covered above.
+
+## 26. Definition of done for v0.1
 
 The first release is complete when:
 
@@ -727,15 +900,17 @@ The first release is complete when:
 3. Basic type inference is deterministic and documented.
 4. `col_types` can force all four supported primitive types.
 5. Missing values work as documented.
-6. Row-width mismatches produce clear errors.
-7. Large reads are interruptible.
-8. All parser/file resources are cleaned up on errors.
-9. The package passes `R CMD check --as-cran` on Linux, macOS, and Windows.
-10. Native tests pass under ASan/UBSan in development CI.
-11. The vendored `zsv` version and license are documented.
-12. Benchmarks confirm that the R wrapper is not introducing pathological overhead.
+6. Row-width mismatches, NULs, and invalid UTF-8 produce the documented errors.
+7. Blank-record, BOM, and unbalanced-quote behavior are pinned by fixtures.
+8. Large reads are interruptible.
+9. All parser/file resources are cleaned up on errors.
+10. The package passes `R CMD check --as-cran` on R-devel on Linux, macOS, and Windows.
+11. Native code passes ASan/UBSan, valgrind, and `rchk`.
+12. The vendored `zsv` version, patches, and license are documented (`UPSTREAM`, `inst/COPYRIGHTS`).
+13. Benchmarks confirm that the R wrapper is not introducing pathological overhead.
+14. The package is accepted on CRAN.
 
-## 26. Likely v0.2 additions
+## 27. Likely v0.2 additions
 
 After v0.1 is stable, candidates are:
 
@@ -747,13 +922,14 @@ After v0.1 is stable, candidates are:
 - `skip` and `n_max`;
 - column selection;
 - explicit ragged-row handling;
+- an `encoding` argument;
 - more flexible column-type specifications;
 - user-configurable resource limits;
 - integration with `zukomp` for compressed input.
 
 Parallel parsing should come later than the SIMD/fast parser because interaction with R's single-threaded API and column materialization requires a separate design rather than merely turning on an upstream option.
 
-## 27. Core design principle
+## 28. Core design principle
 
 The first version should keep the boundary simple:
 
@@ -765,3 +941,20 @@ zucsv owns R semantics
 `zsv` should decide where rows and fields begin and end. `zucsv` should decide what those fields mean in R, how missing values are represented, how columns are typed, and how errors are presented.
 
 That separation gives `zucsv` a small public API while retaining the option to adopt more of `zsv`'s performance capabilities later without redesigning the package.
+
+## 29. Decision log
+
+Decisions taken in the 2026-09-12 revision that were open or unstated in the first draft. Each is reversible before implementation starts; after that, changing one means changing fixtures.
+
+| # | Decision | Alternative rejected | Why |
+|---|----------|----------------------|-----|
+| 1 | `Depends: R (>= 4.2.0)` | Support R 4.0/4.1 | UTF-8 native encoding on Windows makes non-ASCII paths and strings uniform; avoids a `_wfopen` branch. |
+| 2 | Blank records are skipped everywhere (§10) | Treat a blank line as a one-field record (width error in multi-column files) | Files ending in `\n\n` are common; readr and `fread` skip by default; the single-column ambiguity is documented and resolved by quoting `""`. |
+| 3 | `Inf`, `-Inf`, `+Inf`, `NaN` are double syntax (§11) | Character fallback | `write.csv()` emits them; base R output must round-trip. Case-sensitive to stay strict. |
+| 4 | Leading zeros are integer syntax (§11) | Character fallback to protect ZIP codes | Matches `utils::type.convert()`; `col_types = "character"` is the documented escape. |
+| 5 | Numeric conversion uses `R_strtod()` after a strict grammar check (§11) | libc `strtod`, custom float parser | Results identical to `as.numeric()`, locale-independent, documented API; the grammar check excludes the extra syntax `R_strtod` would accept. |
+| 6 | Invalid UTF-8 is an error (§13) | Mark as `CE_UTF8` unvalidated, or as `CE_BYTES` | Early, located failure beats a later `invalid multibyte string` deep in user code; `encoding=` in v0.2 is the escape. |
+| 7 | Row limit is `INT_MAX` data rows (§15) | `R_XLEN_T_MAX` | `data.frame` row names and `nrow()` are integer; a longer object would not be a valid data frame. |
+| 8 | Pass 1 validates everything; pass 2 only converts (§9) | Validate forced types lazily in pass 2 | Pass 2 never errors on content, so the only pass-2 failure is "file changed", and allocation happens once with full knowledge. |
+| 9 | Cleanup via `R_UnwindProtect()` plus `R_alloc()` for all scratch memory (§16) | External pointer with finalizer; manual `free()` before each `Rf_error()` | Only two resources need manual cleanup; a finalizer would close the file at GC time rather than at error time. |
+| 10 | Delimiter must be a single ASCII byte (§4) | Any single byte | Bytes >= 0x80 are never a whole character in UTF-8, so the restriction only removes inputs that could not have worked. |

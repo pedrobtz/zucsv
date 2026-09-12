@@ -1,1 +1,5 @@
 docs
+*.Rcheck
+*.tar.gz
+tests/testthat/_problems
+.Rproj.user
