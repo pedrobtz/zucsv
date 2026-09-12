@@ -782,6 +782,30 @@ correct through `.gitattributes`, which would not survive being copied here,
 and raw bytes in an R file cannot be normalised by a checkout, an editor, or
 `core.autocrlf`.
 
+
+`csv-test-data` (<https://github.com/sineemore/csv-test-data>) is a second,
+stricter RFC 4180 suite, including seven deliberately malformed files that a
+parser is meant to reject. `zucsv` agrees with 18 of its 25 fixtures. It is
+**not** transcribed into the test suite: the upstream repository declares no
+licence, so its files may not be redistributed. `tools/check-csv-test-data.R`
+clones it at run time instead and nothing from it ships.
+
+That script is a regression check rather than a report: every fixture has a
+recorded expectation, the seven deviations included, and it exits non-zero if
+reality stops matching. The deviations are all decisions taken elsewhere in
+this document:
+
+| fixture | why we differ |
+|---|---|
+| `all-empty`, `empty-one-column` | blank records are skipped everywhere (§10, decision 2); the suite wants a blank line to be a row of one empty field |
+| `header-no-rows` | representational: a header-only file gives zero rows but keeps its columns (§14), which the suite's `[]` cannot express |
+| `bad-header-no-header` | an empty file is a 0×0 data frame (§14); `zucsv` has no notion of a *required* header |
+| `bad-header-wrong-header` | the suite checks the header equals `foo,bar,baz` — schema validation, not CSV parsing |
+| `bad-quotes-with-unescaped-quote`, `bad-unescaped-quote` | a quote inside an unquoted cell is passed through, as Excel does (§14); only `zsv`'s unused SIMD engine rejects it |
+
+Only the last of these is a genuine strictness difference from RFC 4180, and
+it follows from §18's choice of the compatibility parser.
+
 ### Upstream behavior tests
 
 Include a small set of fixtures exercising the real-world quoting cases that motivated choosing `zsv`, plus the confirmed empty-line, BOM, and unbalanced-quote behaviors from §17. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.
