@@ -313,7 +313,9 @@ The first pass does *all* validation so that pass 2 cannot fail on the content o
 5. rejects embedded NUL bytes;
 6. applies `na` matching;
 7. infers column types when `col_types = NULL`, or validates every non-missing cell against the forced type;
-8. validates UTF-8 in cells that will become character values (§13);
+8. validates NUL and UTF-8 in cells no grammar accepted (§13) — a cell any
+   grammar takes is ASCII by construction, so numeric and logical columns
+   pay nothing for this;
 9. checks size limits (§15) before any R vector is allocated.
 
 No R data frame is constructed during this pass.

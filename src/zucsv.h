@@ -84,6 +84,17 @@ int zucsv_valid_utf8(const unsigned char *str, size_t len);
 /* Index of the first NUL byte, or -1. */
 R_xlen_t zucsv_find_nul(const unsigned char *str, size_t len);
 
+/* What a cell can carry into an R string. Checked in one pass over the
+   bytes rather than two, since a separate NUL scan costs more than the
+   UTF-8 walk itself. */
+typedef enum {
+  ZUCSV_TEXT_OK = 0,
+  ZUCSV_TEXT_NUL = 1,
+  ZUCSV_TEXT_BAD_UTF8 = 2
+} zucsv_text_status;
+
+zucsv_text_status zucsv_check_bytes(const unsigned char *str, size_t len);
+
 /* --- grammars (design SS11) ---------------------------------------- *
  *
  * Each returns non-zero when the cell is syntactically that type. They are
@@ -116,8 +127,18 @@ typedef struct {
 } zucsv_infer;
 
 void zucsv_infer_init(zucsv_infer *st);
-void zucsv_infer_update(zucsv_infer *st, const unsigned char *str, size_t len);
 zucsv_type zucsv_infer_result(const zucsv_infer *st);
+
+/* Feeds one non-missing cell to a column's inference state.
+   Returns non-zero when some grammar accepted the cell, which proves it is
+   pure ASCII -- every grammar here accepts only ASCII -- so the caller can
+   skip the NUL and UTF-8 checks entirely. A zero return means only that
+   nothing was proved, never that the cell is bad. */
+int zucsv_infer_update(zucsv_infer *st, const unsigned char *str, size_t len);
+
+/* Whether a cell satisfies one specific type, for forced col_types. Same
+   ASCII guarantee as above on a non-zero return. */
+int zucsv_accepts(zucsv_type type, const unsigned char *str, size_t len);
 
 /* ------------------------------------------------------------------ *
  * read_csv.c

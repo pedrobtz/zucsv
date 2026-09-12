@@ -103,12 +103,16 @@ static void zucsv_check_text(const struct zsv_cell *c, double record, R_xlen_t j
   char buf[64];
   const char *what = NULL;
 
-  if (zucsv_find_nul(c->str, c->len) >= 0)
+  switch (zucsv_check_bytes(c->str, c->len)) {
+  case ZUCSV_TEXT_NUL:
     what = "an embedded NUL";
-  else if (!zucsv_valid_utf8(c->str, c->len))
+    break;
+  case ZUCSV_TEXT_BAD_UTF8:
     what = "invalid UTF-8";
-  if (!what)
+    break;
+  default:
     return;
+  }
 
   /* A header record has no column names yet, so there is nothing to name. */
   if (names == R_NilValue)
@@ -289,17 +293,28 @@ static SEXP zucsv_read_body(void *data) {
 
       for (R_xlen_t j = 0; j < ncol; j++) {
         struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
-        zucsv_check_text(&c, record, j, names);
 
         /* A missing cell is evidence for nothing and is exempt from a
-           forced type: it becomes that type's NA (design SS11, SS12). */
+           forced type: it becomes that type's NA (design SS11, SS12). It
+           also needs no byte check, being identical to an `na` string,
+           which R already gave us as valid text. */
         if (zucsv_is_na(&ctx->na, c.str, c.len))
           continue;
 
-        if (ctx->col_types == R_NilValue)
-          zucsv_infer_update(&infer[j], c.str, c.len);
-        else
+        /* Every grammar accepts only ASCII, so a cell one of them takes
+           cannot hold a NUL or a bad UTF-8 sequence and needs no walk over
+           its bytes. Numeric and logical columns therefore pay nothing for
+           the text checks; character columns pay exactly what they did
+           before (design SS13). */
+        if (ctx->col_types == R_NilValue) {
+          if (!zucsv_infer_update(&infer[j], c.str, c.len))
+            zucsv_check_text(&c, record, j, names);
+        } else if (!zucsv_accepts(types[j], c.str, c.len)) {
+          /* Report a NUL or bad UTF-8 in preference to a conversion
+             failure: it says more about what is wrong with the file. */
+          zucsv_check_text(&c, record, j, names);
           zucsv_check_forced(types[j], &c, record, j, names);
+        }
       }
 
       if (nrow >= (double)ZUCSV_MAX_ROWS)
