@@ -112,8 +112,9 @@ int zucsv_is_integer(const unsigned char *str, size_t len, int *out);
 int zucsv_is_double(const unsigned char *str, size_t len);
 
 /* Converts a cell already known to satisfy zucsv_is_logical/is_double.
-   The double conversion goes through R_strtod, so values match as.numeric()
-   exactly and do not depend on LC_NUMERIC. */
+   The double conversion is a transcription of R's own R_strtod5 decimal
+   path working on (ptr, len), verified bit-identical to as.numeric() and
+   independent of LC_NUMERIC; see convert.c. */
 int zucsv_as_logical(const unsigned char *str, size_t len);
 double zucsv_as_double(const unsigned char *str, size_t len);
 

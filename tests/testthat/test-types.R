@@ -98,3 +98,24 @@ test_that("numeric values match base R exactly", {
                      info = v)
   }
 })
+
+
+test_that("double conversion is bit-identical to as.numeric() on every branch", {
+  # zucsv transcribes R's own R_strtod5 rather than calling it (convert.c),
+  # so this pins that the transcription stays faithful: overflow, underflow,
+  # denormals, huge mantissas, capped exponents, the sign of zero.
+  vals <- c("0", "-0", "+0", "0e999", "0E-999", "0000.5000", "007",
+            "1e308", "1.7976931348623157e308", "1.7976931348623158e308", "1e309", "-1e309",
+            "2.2250738585072014e-308", "2.2250738585072011e-308", "4.9e-324", "2e-324", "1e-400",
+            "123456789012345678901234567890", "1234567890123456789012345678901234567890.5",
+            "0.1", "0.799012", "2.235263", "3.141592653589793", "1e22", "1e23",
+            "9007199254740993", "9007199254740992.5", "18446744073709551616",
+            "1e-307", "1e-308", "1.5e-310", "123e-310", ".5", "5.", "1.e5", ".5e-3",
+            "1e9999", "1e-9999", "1e99999999999", "28690487184014.2158750030608700e323")
+  got <- read_text(paste0("a\n", paste(vals, collapse = "\n"), "\n"))$a
+  want <- as.numeric(vals)
+  expect_type(got, "double")
+  expect_identical(got, want)
+  # identical() treats 0 and -0 as equal; the bytes must match too
+  expect_identical(lapply(got, writeBin, con = raw()), lapply(want, writeBin, con = raw()))
+})

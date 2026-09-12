@@ -373,6 +373,33 @@ static SEXP zucsv_read_body(void *data) {
     SET_VECTOR_ELT(out, j, Rf_allocVector(sxp, (R_xlen_t)nrow));
   }
 
+  /* Data pointers taken once per column rather than per cell. VECTOR_ELT()
+     and LOGICAL()/INTEGER()/REAL() are function calls in the R API and
+     measured together at 4 ns per cell -- as much as the UTF-8 walk was.
+     Holding the pointers across the mkCharLenCE() allocations below is safe
+     because R's collector does not move vectors and every column stays
+     reachable from `out`, which is protected. Character columns are left
+     to VECTOR_ELT per cell: SET_STRING_ELT needs the SEXP, and their cost
+     is the string creation anyway. */
+  void **colptr = (void **)R_alloc((size_t)ncol, sizeof(void *));
+  for (R_xlen_t j = 0; j < ncol; j++) {
+    SEXP col = VECTOR_ELT(out, j);
+    switch (types[j]) {
+    case ZUCSV_LOGICAL:
+      colptr[j] = LOGICAL(col);
+      break;
+    case ZUCSV_INTEGER:
+      colptr[j] = INTEGER(col);
+      break;
+    case ZUCSV_DOUBLE:
+      colptr[j] = REAL(col);
+      break;
+    default:
+      colptr[j] = NULL;
+      break;
+    }
+  }
+
   zucsv_open(&ctx->reader, ctx->path, ctx->delim);
 
   {
@@ -399,7 +426,6 @@ static SEXP zucsv_read_body(void *data) {
 
       for (R_xlen_t j = 0; j < ncol; j++) {
         struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
-        SEXP col = VECTOR_ELT(out, j);
         R_xlen_t at = (R_xlen_t)row;
         int missing = zucsv_is_na(&ctx->na, c.str, c.len);
 
@@ -407,20 +433,20 @@ static SEXP zucsv_read_body(void *data) {
            here can fail on content (design SS9). */
         switch (types[j]) {
         case ZUCSV_LOGICAL:
-          LOGICAL(col)[at] = missing ? NA_LOGICAL : zucsv_as_logical(c.str, c.len);
+          ((int *)colptr[j])[at] = missing ? NA_LOGICAL : zucsv_as_logical(c.str, c.len);
           break;
         case ZUCSV_INTEGER: {
           int value = NA_INTEGER;
           if (!missing)
             zucsv_is_integer(c.str, c.len, &value);
-          INTEGER(col)[at] = value;
+          ((int *)colptr[j])[at] = value;
           break;
         }
         case ZUCSV_DOUBLE:
-          REAL(col)[at] = missing ? NA_REAL : zucsv_as_double(c.str, c.len);
+          ((double *)colptr[j])[at] = missing ? NA_REAL : zucsv_as_double(c.str, c.len);
           break;
         default:
-          SET_STRING_ELT(col, at,
+          SET_STRING_ELT(VECTOR_ELT(out, j), at,
                          missing ? NA_STRING
                                  : Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8));
           break;
