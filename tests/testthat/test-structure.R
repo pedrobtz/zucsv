@@ -72,3 +72,52 @@ test_that("many rows read correctly", {
   expect_identical(nrow(df), 5000L)
   expect_identical(df$a[5000], 5000L)
 })
+
+
+test_that("repeated character values are reused without changing anything", {
+  # Pass 2 reuses the previous CHARSXP when the bytes match (read_csv.c).
+  # These pin that the reuse is invisible: values, NAs, encodings and
+  # independence between columns all as if each cell were created fresh.
+  runs <- read_text("a,b\nx,1\nx,2\nx,3\ny,4\nx,5\n", col_types = c("character", "integer"))
+  expect_identical(runs$a, c("x", "x", "x", "y", "x"))
+
+  # a run interrupted by NA must not let the NA be reused as a value, nor
+  # the value before it leak across. The empty cell is written "" because a
+  # bare blank line in a one-column file is skipped (design SS10).
+  gapped <- read_text("a\nx\n\"\"\nx\nNA\nx\n")
+  expect_identical(gapped$a, c("x", NA, "x", NA, "x"))
+
+  # with na = NULL a literal NA cell is an ordinary string, and must not be
+  # confused with NA_STRING by the reuse check
+  literal <- read_text("a\nNA\nNA\nx\n", na = NULL)
+  expect_identical(literal$a, c("NA", "NA", "x"))
+  expect_false(anyNA(literal$a))
+
+  # columns keep their own previous value
+  two <- read_text("a,b\nx,y\ny,x\nx,y\n")
+  expect_identical(two$a, c("x", "y", "x"))
+  expect_identical(two$b, c("y", "x", "y"))
+
+  # reuse preserves the UTF-8 marking
+  utf <- read_text(c(charToRaw("a\n"), as.raw(c(0xC3, 0xA9)), charToRaw("\n"),
+                     as.raw(c(0xC3, 0xA9)), charToRaw("\n")))
+  expect_identical(utf$a, c("é", "é"))
+  expect_identical(Encoding(utf$a), c("UTF-8", "UTF-8"))
+
+  # values that differ only in length, and only in a trailing byte
+  tricky <- read_text("a\nxx\nx\nxx\nxy\nxx\n", na = NULL)
+  expect_identical(tricky$a, c("xx", "x", "xx", "xy", "xx"))
+
+  # an empty string next to a longer one, with matching disabled
+  empties <- read_text("a\n\"\"\n\"\"\nx\n\"\"\n", na = NULL)
+  expect_identical(empties$a, c("", "", "x", ""))
+})
+
+test_that("a long run of a long value is still correct", {
+  skip_on_cran()
+  val <- strrep("abcdefgh", 200)
+  txt <- paste0("a\n", paste(rep(val, 5000), collapse = "\n"), "\n")
+  got <- read_text(txt)$a
+  expect_identical(length(got), 5000L)
+  expect_identical(unique(got), val)
+})

@@ -382,6 +382,23 @@ static SEXP zucsv_read_body(void *data) {
      to VECTOR_ELT per cell: SET_STRING_ELT needs the SEXP, and their cost
      is the string creation anyway. */
   void **colptr = (void **)R_alloc((size_t)ncol, sizeof(void *));
+
+  /* Per-column run-length reuse of the previous CHARSXP. Real categorical
+     columns repeat heavily -- KEN_ALL's prefecture column is 47 distinct
+     values over 124k rows -- and one memcmp is far cheaper than hashing
+     into R's global string cache: 8.0 ns against 24.1 on that column, and
+     about 7% slower when nothing repeats.
+
+     The comparison is against the stored CHARSXP's own bytes, never against
+     the previous cell's: those live in the parser's buffer, which is reused
+     as parsing advances. CHAR(s) is stable R memory for as long as s lives,
+     and each entry here is an element of a column of `out`, which is
+     protected -- so these SEXPs stay reachable without protection of their
+     own, which is why R_alloc'd storage is safe for them. */
+  SEXP *prev = (SEXP *)R_alloc((size_t)ncol, sizeof(SEXP));
+  for (R_xlen_t j = 0; j < ncol; j++)
+    prev[j] = NULL;
+
   for (R_xlen_t j = 0; j < ncol; j++) {
     SEXP col = VECTOR_ELT(out, j);
     switch (types[j]) {
@@ -445,11 +462,25 @@ static SEXP zucsv_read_body(void *data) {
         case ZUCSV_DOUBLE:
           ((double *)colptr[j])[at] = missing ? NA_REAL : zucsv_as_double(c.str, c.len);
           break;
-        default:
-          SET_STRING_ELT(VECTOR_ELT(out, j), at,
-                         missing ? NA_STRING
-                                 : Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8));
+        default: {
+          SEXP col = VECTOR_ELT(out, j);
+          if (missing) {
+            SET_STRING_ELT(col, at, NA_STRING);
+            break; /* NA_STRING is never a reuse candidate: CHAR() of it is
+                      "NA", which would match a literal NA cell under
+                      na = NULL */
+          }
+          SEXP s = prev[j];
+          if (s != NULL && (size_t)LENGTH(s) == c.len &&
+              memcmp(CHAR(s), c.str, c.len) == 0) {
+            SET_STRING_ELT(col, at, s);
+          } else {
+            s = Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8);
+            SET_STRING_ELT(col, at, s);
+            prev[j] = s;
+          }
           break;
+        }
         }
       }
       row += 1;

@@ -119,9 +119,29 @@ pass 2 repeats. Those two are the same design choice — §9's second pass —
 and are worth roughly 40% of what is left. Beyond them, the honest ceiling on
 one core is around fread's figure, not below it.
 
-On character data the picture is different and better. R's string cache
-costs ~75 ns per *unique* string but only ~22 ns for a repeat, and a
-run-length reuse of the previous `CHARSXP` — one `memcmp` instead of a
-hash — measured 2–4× faster than `mkCharLenCE()` on real categorical columns
-(KEN_ALL's prefecture column: 24.1 → 8.0 ns/cell), at a 7% cost when nothing
-repeats. fread has no such reuse. That is where beating it on real data lives.
+On character data, run-length reuse of the previous `CHARSXP` is now
+implemented. It does what the microbenchmark said it would — and much less
+end to end than that microbenchmark implied, which is worth recording.
+
+Isolated, reusing the previous `CHARSXP` instead of calling
+`mkCharLenCE()` measured 24.1 → 8.0 ns/cell on KEN_ALL's prefecture column
+(47 distinct values in 124k rows). End to end, on files built to isolate it:
+
+| 200k × 10 character columns | zucsv | `fread` |
+|---|---|---|
+| 20 levels, sorted into runs (best case) | 0.177 s | 0.095 s |
+| 20 levels, shuffled — no adjacent repeats | 0.217 s | 0.094 s |
+| all distinct (worst case) | 0.249 s | 0.135 s |
+
+The 0.040 s between the first two rows is the reuse: 20 ns/cell saved,
+matching the microbenchmark exactly. But it is 18% of the total, not 2–4×,
+because string creation is one cost among several — the two traversals, the
+per-record work and the grammar scans are untouched by it. And `fread`
+remains 1.8–2.3× ahead in every row, including the best case.
+
+So the earlier reading of this measurement — that string dedup was the path
+to beating `fread` on real data — was wrong. It is a solid 18% on run-heavy
+data and roughly free otherwise (a 2% cost on all-distinct input), but it
+does not close the gap on its own. What remains between `zucsv` and `fread`
+on string data is the same architecture as on numeric: two traversals and
+the library boundary.
