@@ -7,7 +7,8 @@
 
 #include <R_ext/Arith.h> /* R_PosInf, R_NegInf, R_NaN */
 #include <R_ext/Utils.h> /* R_strtod, for calibration and as the fallback */
-#include <float.h>       /* DBL_MAX */
+#include <float.h>       /* DBL_MAX, LDBL_MANT_DIG, DBL_MANT_DIG */
+#include <stdint.h>      /* uint64_t */
 #include <string.h>
 
 int zucsv_is_na(const zucsv_na *na, const unsigned char *str, size_t len) {
@@ -230,13 +231,18 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
  * inputs: every cell of a 2M-cell file, 51 hand-picked cases covering each
  * branch (overflow, underflow, denormals, 300-digit mantissas, 0e999, -0),
  * and 6M random decimals with 1-40 digit mantissas and exponents in
- * [-340, 340]. 19.7 ns/cell against 46.3 for memcpy + NUL + R_strtod. */
+ * [-340, 340]; the shortcuts in strtod_body.h were checked the same way
+ * against the verbatim loops, for both accumulator types. 18.2 ns/cell
+ * against 46.0 for memcpy + NUL + R_strtod; what remains is dominated by the
+ * one long double divide R's algorithm requires. */
 
 #define ZUCSV_ACC long double
+#define ZUCSV_ACC_MANT_DIG LDBL_MANT_DIG
 #define ZUCSV_STRTOD_NAME zucsv_strtod_ldouble
 #include "strtod_body.h"
 
 #define ZUCSV_ACC double
+#define ZUCSV_ACC_MANT_DIG DBL_MANT_DIG
 #define ZUCSV_STRTOD_NAME zucsv_strtod_double
 #include "strtod_body.h"
 

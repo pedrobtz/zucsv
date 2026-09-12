@@ -71,7 +71,7 @@ numeric file, in ns per cell:
 
 | operation | ns/cell | outcome |
 |---|---|---|
-| `memcpy` + `R_strtod` | 46.6 | replaced by a transcription of `R_strtod5` on `(ptr, len)`: 19.7 ns, bit-identical |
+| `memcpy` + `R_strtod` | 46.6 | replaced by a transcription of `R_strtod5` on `(ptr, len)` with exactness shortcuts: 18.2 ns, bit-identical; the rest is the one `long double` divide R's algorithm requires, which fread pays too |
 | bare zsv traversal, ×2 passes | 27.4 | untouched; the second pass is a design choice (§9) |
 | grammar scans (mostly `is_double`) | 12.8 | untouched |
 | NUL scan | 6.8 | skipped for any cell a grammar accepted (ASCII by construction) |
