@@ -763,6 +763,25 @@ Differential tests should compare parsed values, not require identical type-gues
 
 A randomized round-trip test (`write.csv()` of generated data frames → `read_csv()` → `identical()`) exercises the numeric grammars and quoting cheaply; keep it deterministic with a fixed seed.
 
+### Conformance tests
+
+`csv-spectrum` (<https://github.com/max-mapper/csv-spectrum>, BSD-2-Clause)
+is the de facto acid test for CSV parsers: quoted commas, escaped quotes,
+embedded newlines with both LF and CRLF, empty fields, UTF-8, and JSON
+embedded in cells. `zucsv` passes 11 of its 12 fixtures.
+
+The twelfth, `location_coordinates`, is excluded because it is inconsistent
+with itself — its CSV and its JSON give different phone numbers, the JSON is
+a bare object where every other fixture is an array, and the CSV has a bare
+`"` inside an unquoted field. Three open upstream issues cover it.
+
+`tools/update-csv-spectrum.R` regenerates `tests/testthat/test-spectrum.R`
+from a pinned upstream commit. The fixtures are transcribed as raw byte
+vectors rather than vendored as files: upstream keeps its CRLF fixtures
+correct through `.gitattributes`, which would not survive being copied here,
+and raw bytes in an R file cannot be normalised by a checkout, an editor, or
+`core.autocrlf`.
+
 ### Upstream behavior tests
 
 Include a small set of fixtures exercising the real-world quoting cases that motivated choosing `zsv`, plus the confirmed empty-line, BOM, and unbalanced-quote behaviors from §17. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.
