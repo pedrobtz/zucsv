@@ -1,10 +1,18 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
-<url><loc>/404.html</loc></url>
-<url><loc>/LICENSE-text.html</loc></url>
-<url><loc>/LICENSE.html</loc></url>
-<url><loc>/authors.html</loc></url>
-<url><loc>/index.html</loc></url>
-<url><loc>/reference/index.html</loc></url>
-<url><loc>/zucsv-design.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/404.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/CLAUDE.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/LICENSE-text.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/LICENSE.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/ROADMAP.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/articles/index.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/articles/japanese-postal-codes.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/articles/zucsv.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/authors.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/index.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/news/index.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/reference/index.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/reference/read_csv.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/reference/zucsv-package.html</loc></url>
+<url><loc>https://pedrobtz.github.io/zucsv/zucsv-design.html</loc></url>
 </urlset>
 

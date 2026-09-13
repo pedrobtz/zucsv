@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>What the Package Does (One Line, Title Case) • zucsv</title>
+<title>Read CSV Files Using the zsv Parser • zucsv</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="What the Package Does (One Line, Title Case)">
-<meta name="description" content="What the package does (one paragraph).">
-<meta property="og:description" content="What the package does (one paragraph).">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Read CSV Files Using the zsv Parser">
+<meta name="description" content="Reads comma-separated and other delimited text files into base R data frames using the zsv C parser &lt;https://github.com/liquidaty/zsv&gt; as its native backend. Handles quoted fields, embedded delimiters and newlines, escaped quotes, and both LF and CRLF line endings, and infers logical, integer, double, and character column types. Column types can also be given explicitly, in which case a value that cannot be converted is an error rather than a silently missing value. The zsv sources are bundled, so there are no runtime dependencies.">
+<meta property="og:description" content="Reads comma-separated and other delimited text files into base R data frames using the zsv C parser &lt;https://github.com/liquidaty/zsv&gt; as its native backend. Handles quoted fields, embedded delimiters and newlines, escaped quotes, and both LF and CRLF line endings, and infers logical, integer, double, and character column types. Column types can also be given explicitly, in which case a value that cannot be converted is an error rather than a silently missing value. The zsv sources are bundled, so there are no runtime dependencies.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">zucsv</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,12 +31,21 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
+<li class="nav-item"><a class="nav-link" href="articles/zucsv.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="articles/japanese-postal-codes.html">Reading Japan Post's KEN_ALL, legacy and modern</a></li>
+  </ul>
+</li>
+<li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
 </form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/pedrobtz/zucsv/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul>
 </div>
 
@@ -49,11 +58,11 @@
 </h1></div>
 <!-- badges: start -->
 
-<p>The goal of zucsv is to …</p>
+<p>Read CSV files into base R data frames, using the <a href="https://github.com/liquidaty/zsv" class="external-link"><code>zsv</code></a> C parser as the backend.</p>
+<p><code>zucsv</code> is deliberately small: one exported function, no R package dependencies, and a bundled copy of the parser so there is nothing to install and nothing to configure. The division of labour is the whole design — <code>zsv</code> decides where rows and fields begin and end, <code>zucsv</code> decides what they mean in R.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>You can install the development version of zucsv from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
 <span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"pedrobtz/zucsv"</span><span class="op">)</span></span></code></pre></div>
@@ -61,13 +70,84 @@
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
-<p>This is a basic example which shows you how to solve a common problem:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">zucsv</span><span class="op">)</span></span>
-<span><span class="co">## basic example code</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/pedrobtz/zucsv" class="external-link">zucsv</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>  <span class="st">"id,name,score,active"</span>,</span>
+<span>  <span class="st">"1,Ada,9.5,TRUE"</span>,</span>
+<span>  <span class="st">"2,Linus,8.0,FALSE"</span>,</span>
+<span>  <span class="st">"3,Grace,,TRUE"</span></span>
+<span><span class="op">)</span>, <span class="va">path</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">df</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span>
+<span><span class="va">df</span></span>
+<span><span class="co">#&gt;   id  name score active</span></span>
+<span><span class="co">#&gt; 1  1   Ada   9.5   TRUE</span></span>
+<span><span class="co">#&gt; 2  2 Linus   8.0  FALSE</span></span>
+<span><span class="co">#&gt; 3  3 Grace    NA   TRUE</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">df</span><span class="op">)</span></span>
+<span><span class="co">#&gt; 'data.frame':    3 obs. of  4 variables:</span></span>
+<span><span class="co">#&gt;  $ id    : int  1 2 3</span></span>
+<span><span class="co">#&gt;  $ name  : chr  "Ada" "Linus" "Grace"</span></span>
+<span><span class="co">#&gt;  $ score : num  9.5 8 NA</span></span>
+<span><span class="co">#&gt;  $ active: logi  TRUE FALSE TRUE</span></span></code></pre></div>
+<p>Types are inferred over <code>logical</code>, <code>integer</code>, <code>double</code> and <code>character</code>. Give <code>col_types</code> to fix them instead — a value that will not convert is an error rather than a silent <code>NA</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span>, col_types <span class="op">=</span> <span class="st">"character"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span>, col_types <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"integer"</span>, <span class="st">"character"</span>, <span class="st">"double"</span>, <span class="st">"logical"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span>, col_types <span class="op">=</span> <span class="st">"integer"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Error: Cannot parse row 2, column 2 ("name") as integer: "Ada"</span></span></code></pre></div>
+<p>Other delimiters need no separate function:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"data.tsv"</span>, delimiter <span class="op">=</span> <span class="st">"\t"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"data.txt"</span>, delimiter <span class="op">=</span> <span class="st">";"</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="what-it-does-not-do">What it does not do<a class="anchor" aria-label="anchor" href="#what-it-does-not-do"></a>
+</h2>
+<p>v0.1 reads local files and nothing else. There is no <code>write_csv()</code>, no URL or connection input, no compressed files, no date parsing, no column selection, no <code>skip</code>/<code>n_max</code>. See section 3 of <a href="zucsv-design.html"><code>zucsv-design.md</code></a> for the full list and the reasoning, and section 27 for what is likely to come next.</p>
+</div>
+<div class="section level2">
+<h2 id="behavior-worth-knowing">Behavior worth knowing<a class="anchor" aria-label="anchor" href="#behavior-worth-knowing"></a>
+</h2>
+<p>These are decisions, not accidents, and each is pinned by a test:</p>
+<ul>
+<li>
+<strong>Blank lines are skipped</strong> wherever they appear. A line of only whitespace or only delimiters is <em>not</em> blank — it is a record of empty cells, and must match the table’s width. In a single-column file write an intentional empty cell as <code>""</code>; a bare empty line is skipped.</li>
+<li>
+<strong>Every record must have the same width.</strong> Short rows are not padded.</li>
+<li>
+<strong>Column names are kept exactly</strong>, duplicates and empty strings included. No name repair.</li>
+<li>
+<strong>Text must be valid UTF-8.</strong> Invalid bytes or an embedded NUL are an error where they occur, rather than something that fails later somewhere less helpful. A BOM is ignored.</li>
+<li>
+<strong>Nothing is trimmed</strong>, so <code>" 42"</code> is character, not a number.</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="performance">Performance<a class="anchor" aria-label="anchor" href="#performance"></a>
+</h2>
+<p>Faster than <code><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">utils::read.csv()</a></code> by 2.5–6.8× across shapes; slower than <code><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">data.table::fread()</a></code>, which is multi-threaded and single-pass; comparable to a fully materialised <code>vroom</code>, ahead of it on character-heavy data, wide tables and small files. Numbers and method in <a href="bench/RESULTS.html"><code>bench/RESULTS.md</code></a>.</p>
+</div>
+<div class="section level2">
+<h2 id="licence">Licence<a class="anchor" aria-label="anchor" href="#licence"></a>
+</h2>
+<p>MIT. The bundled <code>zsv</code> sources are MIT, copyright Guarnerix Inc dba Liquidaty; see <code>inst/COPYRIGHTS</code> and <code>src/vendor/zsv/UPSTREAM</code>.</p>
 </div>
 </div>
-  </main><aside class="col-md-3"><div class="license">
+  </main><aside class="col-md-3"><div class="links">
+<h2 data-toc-skip>Links</h2>
+<ul class="list-unstyled">
+<li><a href="https://github.com/pedrobtz/zucsv/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/pedrobtz/zucsv/issues" class="external-link">Report a bug</a></li>
+</ul>
+</div>
+
+<div class="license">
 <h2 data-toc-skip>License</h2>
 <ul class="list-unstyled">
 <li><a href="LICENSE.html">Full license</a></li>
@@ -86,7 +166,8 @@
 <div class="developers">
 <h2 data-toc-skip>Developers</h2>
 <ul class="list-unstyled">
-<li>First Last <br><small class="roles"> Author, maintainer </small>   </li>
+<li>Pedro Baltazar <br><small class="roles"> Author, maintainer </small>   </li>
+<li><a href="authors.html">More about authors...</a></li>
 </ul>
 </div>
 
@@ -94,6 +175,7 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml" class="external-link"><img src="https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml/badge.svg" alt="native-checks"></a></li>
 </ul>
 </div>
 
@@ -102,7 +184,7 @@
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by First Last.</p>
+  <p>Developed by Pedro Baltazar.</p>
 </div>
 
 <div class="pkgdown-footer-right">

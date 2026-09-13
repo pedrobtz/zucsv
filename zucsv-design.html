@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="index.html">zucsv</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -15,9 +15,16 @@
     </button>
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
-      <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+      <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="articles/zucsv.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="articles/japanese-postal-codes.html">Reading Japan Post's KEN_ALL, legacy and modern</a></li>
+  </ul></li>
+<li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json"></form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/pedrobtz/zucsv/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -27,19 +34,19 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>zucsv — Design for v0.1.0</h1>
-
+      <small class="dont-index">Source: <a href="https://github.com/pedrobtz/zucsv/blob/main/zucsv-design.md" class="external-link"><code>zucsv-design.md</code></a></small>
     </div>
 
 <div id="zucsv--design-for-v010" class="section level1">
 
-<p><strong>Status:</strong> Draft<br><strong>Backend:</strong> vendored <code>zsv</code> / <code>libzsv</code><br><strong>Primary API:</strong> <code>read_csv()</code><br><strong>Scope:</strong> small, read-only first release</p>
+<p><strong>Status:</strong> Draft, revised 2026-09-12; §10/§13/§14/§15 corrected against the vendored parser’s measured behavior (<code>tools/zsv-behavior.md</code>). Decisions are logged in §29.<br><strong>Backend:</strong> vendored <code>zsv</code> / <code>libzsv</code><br><strong>Primary API:</strong> <code><a href="reference/read_csv.html">read_csv()</a></code><br><strong>Scope:</strong> small, read-only first release, shipped to CRAN<br><strong>Roadmap:</strong> <code>ROADMAP.md</code></p>
 <div class="section level2">
 <h2 id="id_1-purpose">1. Purpose<a class="anchor" aria-label="anchor" href="#id_1-purpose"></a></h2>
 <p><code>zucsv</code> is a small R package for reading CSV files using the <code>zsv</code> C parser as its native backend. The first release should prove the integration, establish stable R semantics, and remain easy to audit and maintain.</p>
 <p>The package should follow the same general philosophy as the other <code>zu</code> packages: use a focused, high-quality C engine for low-level parsing while keeping R-facing behavior small and explicit.</p>
 <p>The package name already provides the namespace, so exported functions should use conventional names rather than repeating the <code>zu</code> prefix:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">zucsv</span><span class="fu">::</span><span class="fu">read_csv</span><span class="op">(</span><span class="st">"data.csv"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu">zucsv</span><span class="fu">::</span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"data.csv"</span><span class="op">)</span></span></code></pre></div>
 <p>not:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">zucsv</span><span class="fu">::</span><span class="fu">zu_read_csv</span><span class="op">(</span><span class="st">"data.csv"</span><span class="op">)</span></span></code></pre></div>
@@ -57,7 +64,9 @@
 <li>allow callers to force column types when inference is undesirable;</li>
 <li>provide deterministic errors for malformed table structure or failed type conversion;</li>
 <li>build on normal R toolchains on Linux, macOS, and Windows;</li>
-<li>have no mandatory R package dependencies.</li>
+<li>have no mandatory R package dependencies;</li>
+<li>pass <code>R CMD check --as-cran</code> with no warnings or notes and be accepted on CRAN (§25);</li>
+<li>run on R &gt;= 4.2.0 (see §4, <code>file</code>, for the reason).</li>
 </ul><p>The implementation should favor correctness, simple ownership rules, and testability over exposing every feature available in <code>zsv</code>.</p>
 </div>
 <div class="section level2">
@@ -69,6 +78,7 @@
 <code>read_tsv()</code> as a separate exported function;</li>
 <li>URL input;</li>
 <li>R connections;</li>
+<li>raw-vector or string input;</li>
 <li>compressed-file handling;</li>
 <li>automatic decompression;</li>
 <li>date, time, or datetime inference;</li>
@@ -83,14 +93,21 @@
 <li>an exposed SIMD/fast-parser switch;</li>
 <li>ALTREP-backed columns;</li>
 <li>lazy parsing;</li>
-<li>schema metadata beyond ordinary R column types.</li>
+<li>schema metadata beyond ordinary R column types;</li>
+<li>a <code>quote</code> argument (<code>"</code> is always the quote character);</li>
+<li>comment lines;</li>
+<li>whitespace trimming of any kind;</li>
+<li>an <code>encoding</code> argument or transcoding;</li>
+<li>a toggle for the blank-row policy (§10 fixes it);</li>
+<li>tibble or <code>data.table</code> output;</li>
+<li>linking against a system-installed <code>zsv</code>.</li>
 </ul><p>These features can be considered only after the basic parser-to-R boundary is stable.</p>
 </div>
 <div class="section level2">
 <h2 id="id_4-public-api">4. Public API<a class="anchor" aria-label="anchor" href="#id_4-public-api"></a></h2>
 <p>The initial public API consists of one exported function:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">read_csv</span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span></span>
 <span>  <span class="va">file</span>,</span>
 <span>  header <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  delimiter <span class="op">=</span> <span class="st">","</span>,</span>
@@ -99,72 +116,83 @@
 <span><span class="op">)</span></span></code></pre></div>
 <div class="section level3">
 <h3 id="file"><code>file</code><a class="anchor" aria-label="anchor" href="#file"></a></h3>
-<p>A length-one character path to a local file.</p>
-<p>For v0.1, paths are the only supported input source. Restricting input to seekable local files makes the implementation substantially simpler and permits an exact two-pass allocation strategy.</p>
-<p>The file is opened in binary mode by the native implementation.</p>
+<p>A length-one, non-missing character path to an existing local file.</p>
+<p>For v0.1, paths are the only supported input source. Restricting input to local files makes the implementation substantially simpler and permits an exact two-pass allocation strategy.</p>
+<p>The R wrapper applies <code><a href="https://rdrr.io/r/base/path.expand.html" class="external-link">path.expand()</a></code> so <code>~/data.csv</code> works. The C side obtains the native path with <code>translateChar()</code> and opens it with <code>fopen(path, "rb")</code>. A directory or unreadable path is reported as <code>Cannot open CSV file: &lt;path&gt;</code>.</p>
+<p>The package requires R &gt;= 4.2.0. From that version the native encoding on Windows is UTF-8, so non-ASCII paths open correctly without a <code>_wfopen</code> code path, and every supported platform agrees that strings handed to R are UTF-8.</p>
 </div>
 <div class="section level3">
 <h3 id="header"><code>header</code><a class="anchor" aria-label="anchor" href="#header"></a></h3>
-<p>A length-one logical value.</p>
+<p>A length-one, non-missing logical value.</p>
 <ul><li>
-<code>TRUE</code>: the first parsed row supplies column names.</li>
+<code>TRUE</code>: the first parsed record supplies column names.</li>
 <li>
-<code>FALSE</code>: all rows are data and names are generated as <code>V1</code>, <code>V2</code>, … <code>Vn</code>.</li>
+<code>FALSE</code>: all records are data and names are generated as <code>V1</code>, <code>V2</code>, … <code>Vn</code>.</li>
 </ul><p>Header values are always treated as text and are never subject to <code>na</code> matching or type inference.</p>
 </div>
 <div class="section level3">
 <h3 id="delimiter"><code>delimiter</code><a class="anchor" aria-label="anchor" href="#delimiter"></a></h3>
-<p>A length-one, single-byte character string. The default is <code>","</code>.</p>
+<p>A length-one character string consisting of exactly one ASCII byte (<code>nchar(delimiter, type = "bytes") == 1</code> and the byte is below <code>0x80</code>). The default is <code>","</code>.</p>
 <p>This allows semicolon-, tab-, and pipe-delimited files without adding more exported functions in v0.1:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">read_csv</span><span class="op">(</span><span class="st">"data.tsv"</span>, delimiter <span class="op">=</span> <span class="st">"\t"</span><span class="op">)</span></span>
-<span><span class="fu">read_csv</span><span class="op">(</span><span class="st">"data.txt"</span>, delimiter <span class="op">=</span> <span class="st">";"</span><span class="op">)</span></span></code></pre></div>
-<p>Newline, carriage return, form feed, NUL, and quote are rejected as delimiters.</p>
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"data.tsv"</span>, delimiter <span class="op">=</span> <span class="st">"\t"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"data.txt"</span>, delimiter <span class="op">=</span> <span class="st">";"</span><span class="op">)</span></span></code></pre></div>
+<p>Newline, carriage return, form feed, NUL, the double quote, and any multi-byte character are rejected as delimiters.</p>
 </div>
 <div class="section level3">
 <h3 id="na"><code>na</code><a class="anchor" aria-label="anchor" href="#na"></a></h3>
-<p>A character vector of exact cell values that should become missing values. The default is:</p>
+<p>A character vector of exact cell values that should become missing values, or <code>NULL</code>. The default is:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">""</span>, <span class="st">"NA"</span><span class="op">)</span></span></code></pre></div>
-<p>Matching occurs after CSV unquoting. Therefore quoted and unquoted forms are treated identically:</p>
+<p>Matching occurs after CSV unquoting and is a bytewise comparison against the UTF-8 form of each <code>na</code> element (the C side translates <code>na</code> with <code>translateCharUTF8()</code> once). Therefore quoted and unquoted forms are treated identically:</p>
 <pre class="text"><code><span><span class="cn">NA</span></span>
 <span><span class="st">"NA"</span></span></code></pre>
 <p>both become missing values under the default configuration.</p>
-<p><code>na = NULL</code> disables missing-value matching.</p>
+<p><code>na = NULL</code> disables missing-value matching. <code>NA_character_</code> elements in <code>na</code> are an error.</p>
 <p>No whitespace trimming is performed before matching in v0.1.</p>
 </div>
 <div class="section level3">
 <h3 id="col_types"><code>col_types</code><a class="anchor" aria-label="anchor" href="#col_types"></a></h3>
 <p>Controls column conversion.</p>
 <p><code>NULL</code> means infer column types from the complete file.</p>
-<p>A character vector may force types. Supported values are:</p>
+<p>A character vector may force types. Supported values are exactly:</p>
 <pre class="text"><code><span><span class="va">logical</span></span>
 <span><span class="va">integer</span></span>
 <span><span class="va">double</span></span>
 <span><span class="va">character</span></span></code></pre>
 <p>A length-one value applies to every column:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">read_csv</span><span class="op">(</span><span class="st">"codes.csv"</span>, col_types <span class="op">=</span> <span class="st">"character"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="st">"codes.csv"</span>, col_types <span class="op">=</span> <span class="st">"character"</span><span class="op">)</span></span></code></pre></div>
 <p>A vector with one value per column specifies each column explicitly:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">read_csv</span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span></span>
 <span>  <span class="st">"data.csv"</span>,</span>
 <span>  col_types <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"integer"</span>, <span class="st">"character"</span>, <span class="st">"double"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>No shorthand type codes and no named partial specifications are supported in v0.1.</p>
+<p>Unknown type names are rejected by the R wrapper before the file is opened. The length is checked in C once the column count is known:</p>
+<pre class="text"><code>col_types has length 3 but the CSV has 5 columns</code></pre>
+<p>No shorthand type codes, no aliases such as <code>"numeric"</code>, and no named partial specifications are supported in v0.1.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="id_5-return-value">5. Return value<a class="anchor" aria-label="anchor" href="#id_5-return-value"></a></h2>
-<p><code>read_csv()</code> returns an ordinary base R <code>data.frame</code>.</p>
-<p>The implementation constructs the data frame directly as a named list of equal-length vectors and assigns the standard <code>data.frame</code> class and compact row names. It should not route through <code><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame()</a></code> and should not perform factor conversion.</p>
+<p><code><a href="reference/read_csv.html">read_csv()</a></code> returns an ordinary base R <code>data.frame</code>.</p>
+<p>The implementation constructs the data frame directly as a named list of equal-length vectors and assigns:</p>
+<ul><li>
+<code>names</code>: header names (or <code>V1..Vn</code>) as UTF-8 <code>CHARSXP</code>s;</li>
+<li>
+<code>row.names</code>: the compact form <code>c(NA_integer_, -nrow)</code>, or <code>integer(0)</code> when there are no rows;</li>
+<li>
+<code>class</code>: <code>"data.frame"</code>.</li>
+</ul><p>It should not route through <code><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame()</a></code> and should not perform factor conversion.</p>
+<p>Character cells become <code>CHARSXP</code>s created with <code>mkCharLenCE(ptr, len, CE_UTF8)</code>; missing cells are <code>NA_STRING</code>, <code>NA_LOGICAL</code>, <code>NA_INTEGER</code>, or <code>NA_REAL</code> according to the column type.</p>
 <p>Column names from a header are preserved exactly in v0.1, including duplicates and empty names. No automatic name repair is performed. This avoids silently changing information from the source file and keeps name policy outside the CSV parser.</p>
 <p>Examples:</p>
 <pre class="csv"><code>id,name,score
 1,Ada,9.5
 2,Linus,8.0</code></pre>
 <p>becomes conceptually:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
 <span>  id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1L</span>, <span class="fl">2L</span><span class="op">)</span>,</span>
 <span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Ada"</span>, <span class="st">"Linus"</span><span class="op">)</span>,</span>
@@ -191,37 +219,48 @@
 <h2 id="id_7-native-interface">7. Native interface<a class="anchor" aria-label="anchor" href="#id_7-native-interface"></a></h2>
 <p>The package uses the base R C API and <code>.Call</code> directly. It should not depend on Rcpp or cpp11.</p>
 <p>The exported R function validates simple arguments and calls one registered C routine, conceptually:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>SEXP C_read_csv<span class="op">(</span></span>
-<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>    SEXP file<span class="op">,</span></span>
-<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>    SEXP header<span class="op">,</span></span>
-<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>    SEXP delimiter<span class="op">,</span></span>
-<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>    SEXP na<span class="op">,</span></span>
-<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>    SEXP col_types</span>
-<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
-<p>Native symbols must be registered in <code>src/init.c</code>, and dynamic symbol lookup should be disabled.</p>
-<p>The R wrapper remains intentionally thin:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>SEXP C_read_csv<span class="op">(</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>    SEXP file<span class="op">,</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>    SEXP header<span class="op">,</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>    SEXP delimiter<span class="op">,</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>    SEXP na<span class="op">,</span></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a>    SEXP col_types</span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>Rules for the native layer:</p>
+<ul><li>every C file defines <code>R_NO_REMAP</code> before including R headers and uses <code>Rf_</code>-prefixed names;</li>
+<li>only entry points documented in <em>Writing R Extensions</em> are used (<code>R CMD check</code> on R &gt;= 4.5 flags non-API entry points);</li>
+<li>
+<code>src/init.c</code> registers the routine in an <code>R_CallMethodDef</code> table via <code>R_registerRoutines()</code>, then calls <code>R_useDynamicSymbols(dll, FALSE)</code> and <code>R_forceSymbols(dll, TRUE)</code>;</li>
+<li>
+<code>R/zucsv-package.R</code> carries <code>@useDynLib zucsv, .registration = TRUE</code>, which makes the registered routine available as the R object <code>C_read_csv</code>;</li>
+<li>
+<code>PROTECT</code>/<code>UNPROTECT</code> usage must be balanced on every path so the code is clean under <code>rchk</code> (§25).</li>
+</ul><p>The R wrapper remains intentionally thin:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">read_csv</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">file</span>,</span>
 <span>                     <span class="va">header</span> <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>                     <span class="va">delimiter</span> <span class="op">=</span> <span class="st">","</span>,</span>
 <span>                     <span class="va">na</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">""</span>, <span class="st">"NA"</span><span class="op">)</span>,</span>
 <span>                     <span class="va">col_types</span> <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="co"># argument checks producing R-level errors, then:</span></span>
+<span>  <span class="va">file</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/path.expand.html" class="external-link">path.expand</a></span><span class="op">(</span><span class="va">file</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/CallExternal.html" class="external-link">.Call</a></span><span class="op">(</span><span class="va">C_read_csv</span>, <span class="va">file</span>, <span class="va">header</span>, <span class="va">delimiter</span>, <span class="va">na</span>, <span class="va">col_types</span><span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
-<p>Argument validation that affects native safety should still be repeated or enforced in C.</p>
+<p>Argument validation that affects native safety must be repeated in C; the R checks exist to give good messages, not to protect the C code.</p>
 </div>
 <div class="section level2">
 <h2 id="id_8-parser-api-choice">8. Parser API choice<a class="anchor" aria-label="anchor" href="#id_8-parser-api-choice"></a></h2>
 <p><code>zucsv</code> should use <code>zsv</code>’s pull parsing API for v0.1:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="cf">while</span> <span class="op">(</span>zsv_next_row<span class="op">(</span>parser<span class="op">)</span> <span class="op">==</span> zsv_status_row<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>    <span class="dt">size_t</span> n <span class="op">=</span> zsv_cell_count<span class="op">(</span>parser<span class="op">);</span></span>
-<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a></span>
-<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">size_t</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> n<span class="op">;</span> <span class="op">++</span>i<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>        <span class="kw">struct</span> zsv_cell cell <span class="op">=</span> zsv_get_cell<span class="op">(</span>parser<span class="op">,</span> i<span class="op">);</span></span>
-<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>        <span class="co">/* consume cell.str / cell.len */</span></span>
-<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="cf">while</span> <span class="op">(</span>zsv_next_row<span class="op">(</span>parser<span class="op">)</span> <span class="op">==</span> zsv_status_row<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>    <span class="dt">size_t</span> n <span class="op">=</span> zsv_cell_count<span class="op">(</span>parser<span class="op">);</span></span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">size_t</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> n<span class="op">;</span> <span class="op">++</span>i<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a>        <span class="kw">struct</span> zsv_cell cell <span class="op">=</span> zsv_get_cell<span class="op">(</span>parser<span class="op">,</span> i<span class="op">);</span></span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>        <span class="co">/* consume cell.str / cell.len */</span></span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>The pull API is preferred because it gives the R wrapper an ordinary sequential control flow, makes error handling easier, and avoids invoking R-oriented logic from parser callbacks.</p>
+<p>The parser is fed from the <code>FILE *</code> through <code>zsv</code>’s read callback (<code>fread</code>-compatible): <code>zsv_next_row()</code> pulls its own input from <code>opts.stream</code> and must not be mixed with <code>zsv_parse_bytes()</code> or <code>zsv_parse_more()</code>. The pinned commit provides the pull API; it returns <code>zsv_status_row</code> per record and <code>zsv_status_done</code> at end of input.</p>
 <p>The push API can be benchmarked later, but it is not needed to establish the package architecture.</p>
 </div>
 <div class="section level2">
@@ -229,27 +268,29 @@
 <p>v0.1 should use two complete parsing passes over the file.</p>
 <p>This is a deliberate simplification enabled by accepting only local file paths.</p>
 <div class="section level3">
-<h3 id="pass-1-inspect">Pass 1: inspect<a class="anchor" aria-label="anchor" href="#pass-1-inspect"></a></h3>
-<p>The first pass:</p>
-<ol style="list-style-type: decimal"><li>reads the header, if present;</li>
-<li>determines the expected number of columns;</li>
-<li>counts data rows;</li>
-<li>verifies that every data row has the expected width;</li>
+<h3 id="pass-1-inspect-and-validate">Pass 1: inspect and validate<a class="anchor" aria-label="anchor" href="#pass-1-inspect-and-validate"></a></h3>
+<p>The first pass does <em>all</em> validation so that pass 2 cannot fail on the content of the file:</p>
+<ol style="list-style-type: decimal"><li>skips a UTF-8 BOM (§13) and reads the header, if present;</li>
+<li>determines the expected number of columns and checks it against the column cap and <code>col_types</code> length;</li>
+<li>counts data records, skipping blank records (§10);</li>
+<li>verifies that every data record has the expected width;</li>
+<li>rejects embedded NUL bytes;</li>
 <li>applies <code>na</code> matching;</li>
-<li>infers column types when <code>col_types = NULL</code>;</li>
-<li>validates forced values when useful to do so early;</li>
-<li>checks size limits before allocating R vectors.</li>
-</ol><p>No full R data frame is constructed during this pass.</p>
+<li>infers column types when <code>col_types = NULL</code>, or validates every non-missing cell against the forced type;</li>
+<li>validates NUL and UTF-8 in cells no grammar accepted (§13) — a cell any grammar takes is ASCII by construction, so numeric and logical columns pay nothing for this;</li>
+<li>checks size limits (§15) before any R vector is allocated.</li>
+</ol><p>No R data frame is constructed during this pass.</p>
 </div>
 <div class="section level3">
 <h3 id="pass-2-materialize">Pass 2: materialize<a class="anchor" aria-label="anchor" href="#pass-2-materialize"></a></h3>
-<p>The second pass:</p>
+<p>The second pass reopens or rewinds the file and:</p>
 <ol style="list-style-type: decimal"><li>allocates each R column at its exact final length;</li>
 <li>parses the file again;</li>
 <li>converts each cell directly into the destination R vector;</li>
 <li>constructs character strings only for character columns;</li>
 <li>assigns names, row names, and the <code>data.frame</code> class.</li>
-</ol><p>The resulting data path is:</p>
+</ol><p>Pass 2 must re-check the record count and widths against pass 1 as it goes and error with <code>CSV file changed while it was being read</code> if they disagree. That keeps a concurrent modification from turning into an out-of-bounds write. Any other conversion failure in pass 2 is an internal error, because pass 1 already validated the content.</p>
+<p>The resulting data path is:</p>
 <pre class="text"><code>file
   ↓
 zsv parser
@@ -260,19 +301,35 @@ direct conversion
   ↓
 preallocated R column</code></pre>
 <p>This avoids growable R columns, repeated vector copying, temporary row lists, and complicated type widening during materialization.</p>
-<p>The cost is parsing the file twice. For the initial implementation, the simpler allocation and ownership model is worth that tradeoff. Benchmarks should later determine whether a one-pass column builder is worthwhile.</p>
+<p>The cost is parsing the file twice and running the numeric grammar checks twice. For the initial implementation, the simpler allocation and ownership model is worth that tradeoff. Benchmarks should later determine whether a one-pass column builder is worthwhile.</p>
 </div>
 </div>
 <div class="section level2">
-<h2 id="id_10-column-width-semantics">10. Column-width semantics<a class="anchor" aria-label="anchor" href="#id_10-column-width-semantics"></a></h2>
+<h2 id="id_10-records-column-width-and-blank-rows">10. Records, column width, and blank rows<a class="anchor" aria-label="anchor" href="#id_10-records-column-width-and-blank-rows"></a></h2>
+<div class="section level3">
+<h3 id="record-numbering">Record numbering<a class="anchor" aria-label="anchor" href="#record-numbering"></a></h3>
+<p>Error messages refer to <em>records</em>, not lines, because a quoted field can span lines. Records are numbered from 1 in the order <code>zsv</code> emits them, including the header record and skipped blank records. So with <code>header = TRUE</code> the first data record is record 2. This matches what a user sees when stepping through the file with a CSV-aware viewer.</p>
+</div>
+<div class="section level3">
+<h3 id="column-width">Column width<a class="anchor" aria-label="anchor" href="#column-width"></a></h3>
 <p>The expected number of columns is established by:</p>
-<ul><li>the header row when <code>header = TRUE</code>;</li>
-<li>the first data row when <code>header = FALSE</code>.</li>
-</ul><p>Every subsequent row must contain exactly that number of cells.</p>
+<ul><li>the header record when <code>header = TRUE</code>;</li>
+<li>the first non-blank data record when <code>header = FALSE</code>.</li>
+</ul><p>Every subsequent non-blank record must contain exactly that number of cells.</p>
 <p>A mismatch is an error:</p>
 <pre class="text"><code>CSV row 42 has 6 fields; expected 5</code></pre>
 <p>Although <code>zsv</code> itself can parse tables with inconsistent row widths, <code>zucsv</code> v0.1 deliberately requires a rectangular table because every R data-frame column must have the same length.</p>
 <p>Future versions may add an explicit ragged-row policy such as padding short rows with <code>NA</code>, but v0.1 must not silently invent that policy.</p>
+</div>
+<div class="section level3">
+<h3 id="blank-rows">Blank rows<a class="anchor" aria-label="anchor" href="#blank-rows"></a></h3>
+<p>A <em>blank record</em> is a record with no bytes at all between its line terminators (a trailing terminator at end of file does not create a record). Blank records are skipped everywhere: they do not count as data rows and do not trigger a width error. This makes files that end in <code>\n\n</code>, or that contain an empty line between blocks, read without complaint, and matches the default of the other common R readers.</p>
+<p>A blank record is recognised as one cell, of length zero, that was <strong>not</strong> quoted. The parser reports quoting per cell, so <code>""</code> on a line of its own is a one-cell record that is <em>not</em> blank and is kept. Consequences to document and test:</p>
+<ul><li>a record containing only whitespace or only delimiters is <em>not</em> blank; it is a record of one or more empty cells and is subject to the width check;</li>
+<li>in a single-column file an intentional empty cell must be written as <code>""</code> to survive; an unquoted empty line is skipped;</li>
+<li>with <code>header = TRUE</code>, the header is the first non-blank record.</li>
+</ul><p>The parser does not skip blank lines itself — it emits them as one-cell records — so this policy is <code>zucsv</code>’s own. It holds regardless of what the parser emits; <code>tools/zsv-behavior.md</code> records what it actually does, and <code>tests/testthat/test-upstream.R</code> enforces that the two stay consistent.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="id_11-type-inference">11. Type inference<a class="anchor" aria-label="anchor" href="#id_11-type-inference"></a></h2>
@@ -287,31 +344,31 @@ all integer  → integer
 all numeric  → double
 otherwise    → character</code></pre>
 <p>A column containing only missing values becomes <code>character</code> in v0.1 because there is no evidence for a narrower type.</p>
+<p>Grammar checks operate on the raw <code>{pointer, length}</code> cell without copying or modifying it. A cell is only converted once its column type is fixed (pass 2).</p>
 <div class="section level3">
 <h3 id="logical-syntax">Logical syntax<a class="anchor" aria-label="anchor" href="#logical-syntax"></a></h3>
-<p>Recognize only:</p>
+<p>Recognize only these four exact strings:</p>
 <pre class="text"><code><span><span class="cn">TRUE</span></span>
 <span><span class="cn">FALSE</span></span>
 <span><span class="va">true</span></span>
 <span><span class="va">false</span></span></code></pre>
-<p>Values <code>0</code>, <code>1</code>, <code>T</code>, <code>F</code>, <code>yes</code>, and <code>no</code> are not logical syntax in v0.1.</p>
+<p>Values <code>T</code>, <code>F</code>, <code>True</code>, <code>0</code>, <code>1</code>, <code>yes</code>, and <code>no</code> are not logical syntax in v0.1.</p>
 </div>
 <div class="section level3">
 <h3 id="integer-syntax">Integer syntax<a class="anchor" aria-label="anchor" href="#integer-syntax"></a></h3>
-<p>Integers use base-10 syntax with an optional leading sign and no grouping separator:</p>
-<pre class="text"><code><span><span class="fl">0</span></span>
-<span><span class="fl">42</span></span>
-<span><span class="op">-</span><span class="fl">17</span></span>
-<span><span class="op">+</span><span class="fl">9</span></span></code></pre>
-<p>A value must fit in R’s integer range to keep the column as integer. A syntactically integral value outside that range promotes the column to double if it is exactly acceptable under the numeric parser.</p>
+<pre class="text"><code>[+-]? [0-9]+</code></pre>
+<p>Base-10, optional leading sign, no grouping separator, leading zeros permitted (<code>007</code> is <code>7L</code>, as with <code><a href="https://rdrr.io/r/utils/type.convert.html" class="external-link">utils::type.convert()</a></code>).</p>
+<p>The value must lie in <code>[-2147483647, 2147483647]</code>; <code>-2147483648</code> is <code>NA_integer_</code> in R and is out of range. Conversion accumulates into a 64-bit integer with an overflow check, so no libc call is needed. A syntactically integral value outside the range promotes the column to double during inference and is a conversion error when <code>integer</code> is forced.</p>
+<p>Examples: <code>0</code>, <code>42</code>, <code>-17</code>, <code>+9</code>.</p>
 </div>
 <div class="section level3">
 <h3 id="double-syntax">Double syntax<a class="anchor" aria-label="anchor" href="#double-syntax"></a></h3>
-<p>Basic decimal and scientific notation are supported using <code>.</code> as the decimal separator:</p>
-<pre class="text"><code><span><span class="fl">1.5</span></span>
-<span><span class="op">-</span><span class="fl">0.25</span></span>
-<span><span class="fl">6.02e23</span></span>
-<span><span class="fl">1E-8</span></span></code></pre>
+<pre class="text"><code>[+-]? ( [0-9]+ ( '.' [0-9]* )? | '.' [0-9]+ ) ( [eE] [+-]? [0-9]+ )?
+| [+-]? 'Inf'
+| 'NaN'</code></pre>
+<p>Using <code>.</code> as the decimal separator. <code>Inf</code>, <code>-Inf</code>, <code>+Inf</code>, and <code>NaN</code> are accepted, case-sensitively, because <code><a href="https://rdrr.io/r/utils/write.table.html" class="external-link">write.csv()</a></code> produces them and base R output must round-trip. <code>inf</code>, <code>Infinity</code>, <code>nan</code>, hexadecimal floats, and leading or trailing whitespace are not double syntax.</p>
+<p>Conversion happens only after the grammar check passes. It is a transcription of the decimal branch of R’s own <code>R_strtod5()</code> working directly on the <code>{pointer, length}</code> cell (<code>src/strtod_body.h</code>), so values match <code><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric()</a></code> bit for bit and do not depend on <code>LC_NUMERIC</code>, with none of the copy, terminator, call, or whitespace/<code>NA</code>/hex handling that <code>R_strtod()</code> would repeat. R accumulates in <code>LDOUBLE</code> and does not tell packages whether that is <code>long double</code> or <code>double</code>, so the transcription is instantiated for both and the first call keeps whichever agrees with <code>R_strtod()</code> on a set of probe values – falling back to calling <code>R_strtod()</code> per cell if neither does. Verified bit-identical on 8,000,051 inputs (§29, decision 15).</p>
+<p>Examples: <code>1.5</code>, <code>-0.25</code>, <code>6.02e23</code>, <code>1E-8</code>, <code>.5</code>, <code>5.</code>.</p>
 <p>Locale-specific decimal commas and thousands separators are not supported in v0.1.</p>
 </div>
 <div class="section level3">
@@ -325,108 +382,148 @@ otherwise    → character</code></pre>
 <p>When <code>col_types</code> forces a type, every non-missing cell must be valid for that type.</p>
 <p>Conversion failure is an error, not a warning followed by <code>NA</code>:</p>
 <pre class="text"><code>Cannot parse row 18, column 3 ("amount") as double: "12 USD"</code></pre>
+<p>The column name is the header name or the generated <code>V&lt;n&gt;</code>. The offending value is truncated in the message (§20).</p>
 <p>This strict behavior prevents silent data loss and keeps v0.1 semantics easy to reason about.</p>
-<p><code>character</code> always accepts a non-NUL cell.</p>
+<p><code>character</code> always accepts a non-NUL, valid-UTF-8 cell.</p>
 </div>
 <div class="section level2">
 <h2 id="id_13-text-and-encoding">13. Text and encoding<a class="anchor" aria-label="anchor" href="#id_13-text-and-encoding"></a></h2>
 <p>v0.1 treats text input as UTF-8.</p>
-<p>A UTF-8 BOM at the beginning of the file should be ignored before interpreting the first field or header name.</p>
+<p>A UTF-8 BOM (<code>EF BB BF</code>) at the beginning of the file is ignored before interpreting the first field or header name. The vendored parser already strips it, so <code>zucsv</code> adds no BOM handling of its own, but it guarantees the result and covers it with a fixture either way.</p>
+<p>Strings handed to R are created with <code>mkCharLenCE(..., CE_UTF8)</code>. Cells that fail the primitive grammars — the only cells that can carry non-ASCII bytes into R — and header names are validated as UTF-8 in pass 1. Invalid sequences are an error:</p>
+<pre class="text"><code>CSV contains invalid UTF-8 at row 8, column 4 ("name")</code></pre>
+<p>Erroring is preferred over marking bad bytes as UTF-8, which would defer the failure to a later <code><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nchar()</a></code> or <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> with a far less useful message. An <code>encoding</code> argument is the v0.2 escape hatch.</p>
 <p>No encoding argument or transcoding is provided in v0.1. Supporting Latin-1, Windows code pages, UTF-16, and encoding detection is outside scope.</p>
-<p>Embedded NUL bytes in a cell should result in an error rather than being passed into ordinary R character strings.</p>
+<p>Embedded NUL bytes in a cell are an error rather than being passed into ordinary R character strings.</p>
 </div>
 <div class="section level2">
 <h2 id="id_14-empty-files-and-edge-cases">14. Empty files and edge cases<a class="anchor" aria-label="anchor" href="#id_14-empty-files-and-edge-cases"></a></h2>
 <p>Required behavior:</p>
 <ul><li>an empty file returns a zero-column, zero-row <code>data.frame</code>;</li>
+<li>a file consisting only of blank records is treated as empty;</li>
 <li>a header-only file returns zero rows with one character column for each header field;</li>
 <li>
-<code>header = FALSE</code> on an empty file returns a zero-column, zero-row <code>data.frame</code>;</li>
-<li>an empty data cell is <code>NA</code> under the default <code>na</code> setting;</li>
+<code>header = FALSE</code> on a one-record file returns one row of data;</li>
+<li>an empty data cell is <code>NA</code> under the default <code>na</code> setting, whether written as nothing or as <code>""</code>;</li>
+<li>with <code>na = NULL</code> an empty cell is the empty string and makes its column <code>character</code>;</li>
+<li>a trailing delimiter (<code>a,b,</code>) yields a final empty cell, so the record has three fields;</li>
 <li>quoted delimiters remain part of the cell value;</li>
-<li>escaped quotes are unescaped by <code>zsv</code>;</li>
-<li>embedded newlines in quoted fields remain part of the cell value;</li>
-<li>CRLF and LF input must both be accepted;</li>
-<li>header names are never interpreted as missing values.</li>
-</ul><p>Blank-row behavior should be locked down with explicit fixtures matching the chosen <code>zsv</code> parser semantics before release rather than being left accidental.</p>
+<li>escaped quotes (<code>""</code> inside a quoted field) are unescaped by <code>zsv</code>;</li>
+<li>embedded newlines in quoted fields remain part of the cell value, including a CR LF pair and a lone CR;</li>
+<li>CRLF and LF input must both be accepted; a final record without a trailing terminator is still a record;</li>
+<li>header names are never interpreted as missing values;</li>
+<li>
+<code>" 42"</code> (leading space) is not numeric syntax and makes its column <code>character</code>.</li>
+</ul><p>Blank-record (§10), BOM, and unbalanced-quote behavior are established in <code>tools/zsv-behavior.md</code> and pinned by fixtures rather than left accidental. An unbalanced quote is not an error from the parser: it swallows the rest of the line into one cell, which <code>zucsv</code> then reports as a row-width mismatch.</p>
 </div>
 <div class="section level2">
 <h2 id="id_15-resource-limits">15. Resource limits<a class="anchor" aria-label="anchor" href="#id_15-resource-limits"></a></h2>
 <p>The wrapper should use explicit resource checks rather than relying on accidental allocation failure.</p>
 <p>At minimum it must guard against:</p>
-<ul><li>row counts that cannot fit in an R long vector;</li>
-<li>column counts beyond a package-defined safety limit;</li>
+<ul><li>more than <code>2147483647</code> data rows — the practical <code>data.frame</code> limit, because compact row names and <code><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow()</a></code> are integers (this is stricter than <code>R_XLEN_T_MAX</code>);</li>
+<li>more than the package column cap;</li>
 <li>multiplication overflow when computing sizes;</li>
-<li>R vector lengths beyond <code>R_XLEN_T_MAX</code>;</li>
-<li>native allocation failures reported by <code>zsv</code>;</li>
-<li>parser limits encountered by <code>zsv</code>.</li>
-</ul><p><code>zsv</code> exposes a configurable maximum column count. <code>zucsv</code> should set an intentional internal value rather than silently inheriting an upstream default. A reasonable initial safety cap is 65,536 columns. If real use cases require more, the limit can later become configurable.</p>
+<li>native allocation failures reported by <code>zsv</code> (<code>zsv_new()</code> returning <code>NULL</code>, out-of-memory statuses);</li>
+<li>parser limits encountered by <code>zsv</code>, in particular its maximum row size.</li>
+</ul><p><code>zsv</code> exposes configurable maximum column and row sizes, and <strong>silently truncates</strong> when either is exceeded — no error status, no way to tell the truncated result from a genuine one. <code>zucsv</code> must detect both itself (<code>tools/zsv-behavior.md</code> has the measurements):</p>
+<ul><li>
+<strong>Columns.</strong> Leaving <code>max_columns</code> at 0 gets the upstream default of 1024, so it is always set explicitly. <code>zucsv</code> sets it to its cap <em>plus one</em>
+<ol start="65537" style="list-style-type: decimal"><li>and errors when a record reports more than 65,536 cells (<code>CSV exceeds zucsv's maximum of 65536 columns</code>). The extra slot is what separates a file at the cap from one over it.</li>
+</ol></li>
+<li>
+<strong>Record size.</strong> An oversize row is emitted as a record with <strong>zero</strong> cells. Since even a blank line yields one cell, a zero-cell record is an unambiguous overflow signal, and <code>zucsv</code> raises an error naming the record. The limit is 8 MiB. It is not free to set this high: the parser sizes its scan buffer at twice <code>max_row_size</code> and <code>malloc</code>s it on every parse, so a huge limit is a memory cost on every call, including on tiny files. 8 MiB is 128x the upstream default of 64 KiB, covers any realistic row, and leaves a 16 MiB buffer whose pages stay untouched unless rows really do get that large.</li>
+</ul><p>If real use cases require more, the limits can later become configurable.</p>
 </div>
 <div class="section level2">
 <h2 id="id_16-interrupts-and-cleanup">16. Interrupts and cleanup<a class="anchor" aria-label="anchor" href="#id_16-interrupts-and-cleanup"></a></h2>
 <p>Large reads must remain interruptible.</p>
-<p>The native loop should call <code>R_CheckUserInterrupt()</code> periodically, for example every 16,384 rows, rather than for every row.</p>
+<p>The native loops in both passes call <code>R_CheckUserInterrupt()</code> periodically, for example every 16,384 records, rather than for every record.</p>
 <p>All native resources must be released on both success and R errors:</p>
 <ul><li>open <code>FILE *</code> handles;</li>
 <li>
 <code>zsv_parser</code> instances;</li>
 <li>native temporary allocations.</li>
-</ul><p>The implementation should structure cleanup so that R long jumps cannot leak resources. <code>R_UnwindProtect()</code> or an equivalent disciplined cleanup pattern should be used where needed.</p>
-</div>
+</ul><p>The cleanup discipline for v0.1:</p>
+<ul><li>all <code>zucsv</code>-owned scratch memory (per-column inference state, the translated <code>na</code> table, the numeric scratch buffer) is allocated with <code>R_alloc()</code>, which R frees automatically when <code>.Call</code> returns or unwinds — so it never needs explicit cleanup;</li>
+<li>the two resources that are not R-managed, the <code>FILE *</code> and the <code>zsv_parser</code>, live in a single reader struct;</li>
+<li>the parse runs inside <code>R_UnwindProtect()</code> with a cleanup function that closes and deletes whatever is non-<code>NULL</code> in that struct and then continues the unwind with <code>R_ContinueUnwind()</code>. <code>Rf_error()</code> and <code>R_CheckUserInterrupt()</code> both long-jump, so every error and interrupt goes through this cleanup.</li>
+</ul></div>
 <div class="section level2">
 <h2 id="id_17-vendoring-zsv">17. Vendoring <code>zsv</code>
 <a class="anchor" aria-label="anchor" href="#id_17-vendoring-zsv"></a></h2>
 <p>Vendor only the minimum library subset required by the parser.</p>
-<p>Suggested layout:</p>
+<p>Layout:</p>
 <pre class="text"><code>zucsv/
 ├── DESCRIPTION
 ├── NAMESPACE
+├── NEWS.md
+├── LICENSE                     # MIT template for zucsv itself
+├── LICENSE.md
+├── LICENSE.note                # points out the bundled zsv license
+├── cran-comments.md
 ├── R/
-│   └── read_csv.R
+│   ├── read_csv.R
+│   └── zucsv-package.R
 ├── src/
+│   ├── Makevars
+│   ├── Makevars.win
 │   ├── init.c
 │   ├── read_csv.c
 │   ├── convert.c
 │   ├── zucsv.h
 │   └── vendor/
 │       └── zsv/
+│           ├── UPSTREAM        # repo, tag, commit, date, patch list
+│           ├── LICENSE
 │           ├── include/
-│           ├── src/
-│           └── LICENSE
+│           └── src/
+├── inst/
+│   └── COPYRIGHTS              # copyright holders of the bundled code
 ├── tests/
 │   └── testthat/
-├── tools/
-│   └── update-zsv.sh
-└── inst/
-    └── LICENSE.note</code></pre>
-<p>The vendored source should be pinned to a known upstream commit or release. Record:</p>
+└── tools/
+    ├── update-zsv.sh           # re-vendors a given commit and re-applies patches
+    └── patches/                # minimal, documented patches to upstream</code></pre>
+<p>The vendored source is pinned to a known upstream commit or release. <code>src/vendor/zsv/UPSTREAM</code> records:</p>
 <ul><li>upstream repository;</li>
 <li>version/tag if available;</li>
 <li>exact commit hash;</li>
 <li>vendoring date;</li>
-<li>local patches, if any.</li>
-</ul><p>Avoid local modifications to upstream source where possible. Put R-specific adaptation in <code>zucsv</code> wrapper files.</p>
-</div>
+<li>local patches, each with a one-line reason.</li>
+</ul><p>Avoid local modifications to upstream source where possible. Put R-specific adaptation in <code>zucsv</code> wrapper files. Where a patch is unavoidable — typically for CRAN compliance (§25) — keep it as a file in <code>tools/patches/</code> so <code>tools/update-zsv.sh</code> can re-apply it on the next upgrade, and report it upstream when it is a genuine fix.</p>
+<p>Vendoring must include an audit of the subset for:</p>
+<ul><li>calls CRAN forbids in package code: <code>exit</code>, <code>abort</code>, <code>assert</code> (compiles to <code>abort</code> unless <code>NDEBUG</code>), <code>printf</code>/<code>puts</code>/<code>fprintf(stderr, ...)</code>, <code>rand</code>/<code>srand</code>;</li>
+<li>compiler warnings under <code>-Wall -pedantic -Wstrict-prototypes</code> with GCC and Clang, and under C23 (<code>R CMD check</code> on R-devel);</li>
+<li>anything requiring <code>-march</code>/<code>-mavx*</code> flags or a non-standard <code>-std=</code> for correctness;</li>
+<li>GNU make constructs, since <code>src/Makevars</code> must work with a POSIX <code>make</code> unless <code>SystemRequirements: GNU make</code> is declared;</li>
+<li>the behaviors <code>zucsv</code> relies on, re-verified and written back to <code>tools/zsv-behavior.md</code>: how the pull API is driven, empty-line records, the quoted-cell flag, BOM handling, the two silent-truncation paths, and unbalanced-quote recovery.</li>
+</ul></div>
 <div class="section level2">
 <h2 id="id_18-parser-mode-for-v01">18. Parser mode for v0.1<a class="anchor" aria-label="anchor" href="#id_18-parser-mode-for-v01"></a></h2>
 <p>Use <code>zsv</code>’s normal/default compatibility parser in the first release.</p>
 <p>Do not expose a <code>parser =</code> argument yet. Do not enable parallel row processing.</p>
-<p>The newer fast/SIMD parser is an attractive future optimization, but exposing it in v0.1 would expand the portability and testing matrix before the basic R semantics are proven.</p>
+<p>The newer fast/SIMD parser is not usable, and not merely deferred. It is unreachable from the pull API — <code>zsv_next_row()</code> overwrites <code>scan_engine</code> — and, reached through the push API, it returns <strong>raw</strong> cells: surrounding quotes kept, doubled quotes not unescaped, and a quoted empty cell arriving as two bytes rather than zero, which silently changes §10’s blank-record rule. <code>zsv_set_column_filter()</code> claims to restore normalization for selected columns; measured over every column, it changes nothing. Using it would mean zucsv stripping quotes and unescaping itself — CSV syntax, which §28 assigns to <code>zsv</code>. <code>tools/zsv-behavior.md</code> records the measurements and what to re-check on upgrade.</p>
 <p>A later version may support:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">read_csv</span><span class="op">(</span><span class="va">file</span>, parser <span class="op">=</span> <span class="st">"fast"</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">file</span>, parser <span class="op">=</span> <span class="st">"fast"</span><span class="op">)</span></span></code></pre></div>
 <p>only if benchmarks show a meaningful end-to-end improvement after R allocation and type conversion are included.</p>
 </div>
 <div class="section level2">
 <h2 id="id_19-build-strategy">19. Build strategy<a class="anchor" aria-label="anchor" href="#id_19-build-strategy"></a></h2>
-<p>The package should always build against its vendored <code>zsv</code> copy in v0.1.</p>
+<p>The package always builds against its vendored <code>zsv</code> copy in v0.1.</p>
 <p>Do not search for a system-installed <code>zsv</code> library. A single known backend version makes CRAN builds and bug reports reproducible.</p>
 <p>Target standard R compilation environments:</p>
 <ul><li>GCC on Linux;</li>
 <li>Apple Clang on macOS;</li>
 <li>GCC via Rtools on Windows.</li>
+</ul><p><code>src/Makevars</code> rules:</p>
+<ul><li>list every object file explicitly in <code>OBJECTS</code> (including <code>vendor/zsv/src/*.o</code>); no <code>$(wildcard)</code>, <code>$(shell)</code>, or other GNU make features;</li>
+<li>set include paths through <code>PKG_CPPFLAGS</code> (<code>-I. -Ivendor/zsv/include</code>) and any feature macros <code>zsv</code> needs;</li>
+<li>never set optimization or architecture flags (<code>-O3</code>, <code>-march=native</code>, <code>-mavx2</code>) and never suppress diagnostics (<code>-w</code>, <code>-Wno-*</code>) — CRAN rejects both;</li>
+<li>
+<code>Makevars.win</code> mirrors <code>Makevars</code>.</li>
 </ul><p>Optional architecture-specific optimization must not be required for correctness.</p>
-<p>Compiler warnings should be enabled during development, and CI should treat warnings from <code>zucsv</code> code seriously while avoiding unnecessary edits to vendored upstream code.</p>
+<p>Compiler warnings should be enabled during development (<code>-Wall -Wextra -pedantic -Wstrict-prototypes</code> via <code>~/.R/Makevars</code>), and CI should treat warnings from <code>zucsv</code> code as failures. Warnings from vendored code that surface under CRAN’s flags are fixed with patches (§17), not silenced.</p>
 </div>
 <div class="section level2">
 <h2 id="id_20-error-model">20. Error model<a class="anchor" aria-label="anchor" href="#id_20-error-model"></a></h2>
@@ -435,12 +532,20 @@ otherwise    → character</code></pre>
 <pre class="text"><code>Cannot open CSV file: data.csv</code></pre>
 <pre class="text"><code>CSV row 205 has 7 fields; expected 6</code></pre>
 <pre class="text"><code>Cannot parse row 19, column 2 ("count") as integer: "1.5"</code></pre>
-<pre class="text"><code>CSV contains an embedded NUL at row 8, column 4</code></pre>
+<pre class="text"><code>CSV contains an embedded NUL at row 8, column 4 ("notes")</code></pre>
+<pre class="text"><code>CSV contains invalid UTF-8 at row 8, column 4 ("name")</code></pre>
 <pre class="text"><code>CSV exceeds zucsv's maximum of 65536 columns</code></pre>
-<p>Do not expose raw <code>zsv</code> status codes as the primary user-facing message. Preserve them internally where useful for diagnostics.</p>
+<pre class="text"><code>col_types has length 3 but the CSV has 5 columns</code></pre>
+<p>Conventions:</p>
+<ul><li>“row” means record as defined in §10;</li>
+<li>columns are 1-based and carry the column name in parentheses when one exists;</li>
+<li>cell values quoted in a message are truncated to 40 bytes with a trailing <code>...</code> and never include NUL bytes;</li>
+<li>all errors are raised with <code>Rf_error()</code> after native cleanup (§16), never with <code>Rf_warning()</code> followed by <code>NA</code>.</li>
+</ul><p>Do not expose raw <code>zsv</code> status codes as the primary user-facing message. Preserve them internally where useful for diagnostics (for example by appending <code>zsv_parse_status_desc()</code> output to allocation and parser-limit errors).</p>
 </div>
 <div class="section level2">
 <h2 id="id_21-testing-strategy">21. Testing strategy<a class="anchor" aria-label="anchor" href="#id_21-testing-strategy"></a></h2>
+<p>Fixtures are written by tests into <code><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile()</a></code> with <code><a href="https://rdrr.io/r/base/readBin.html" class="external-link">writeBin()</a></code> so line endings, BOMs, NULs, and invalid bytes are exact; there is no <code>withr</code> or <code>readr</code> dependency in <code>Suggests</code>.</p>
 <div class="section level3">
 <h3 id="r-level-unit-tests">R-level unit tests<a class="anchor" aria-label="anchor" href="#r-level-unit-tests"></a></h3>
 <p>Test at least:</p>
@@ -449,43 +554,76 @@ otherwise    → character</code></pre>
 <li>single-column input;</li>
 <li>quoted commas;</li>
 <li>escaped quotes;</li>
-<li>embedded newlines;</li>
-<li>CRLF and LF line endings;</li>
-<li>empty cells;</li>
+<li>embedded newlines, LF and CRLF;</li>
+<li>CRLF and LF line endings, with and without a final terminator;</li>
+<li>trailing delimiter;</li>
+<li>blank records: trailing, interior, leading, and an all-blank file;</li>
+<li>whitespace-only and delimiter-only records (width errors);</li>
+<li>empty cells, unquoted and <code>""</code>;</li>
 <li>
 <code>NA</code> cells;</li>
-<li>custom <code>na</code> values;</li>
+<li>custom <code>na</code> values and <code>na = NULL</code>;</li>
 <li>duplicate and empty column names;</li>
-<li>UTF-8 strings;</li>
+<li>UTF-8 strings in cells, header names, and the file path (including <code>~</code> expansion);</li>
 <li>UTF-8 BOM;</li>
-<li>logical inference;</li>
-<li>integer inference;</li>
-<li>integer overflow to double;</li>
-<li>double inference;</li>
-<li>scientific notation;</li>
-<li>character fallback;</li>
+<li>invalid UTF-8 (error);</li>
+<li>embedded NUL (error);</li>
+<li>logical inference and the rejected spellings (<code>T</code>, <code>True</code>, <code>1</code>);</li>
+<li>integer inference, leading zeros, <code>+</code> sign;</li>
+<li>integer overflow to double, including <code>-2147483648</code>;</li>
+<li>double inference, <code>.5</code>, <code>5.</code>, scientific notation, <code>Inf</code>, <code>-Inf</code>, <code>NaN</code>;</li>
+<li>character fallback, including <code>" 42"</code>;</li>
 <li>all-missing columns;</li>
-<li>forced column types;</li>
-<li>failed forced conversions;</li>
-<li>inconsistent row widths;</li>
+<li>forced column types for all four types, length 1 and length <code>ncol</code>;</li>
+<li>
+<code>col_types</code> length mismatch and unknown names;</li>
+<li>failed forced conversions, with the exact error message;</li>
+<li>inconsistent row widths, with the exact error message;</li>
 <li>header-only files;</li>
 <li>empty files;</li>
+<li>invalid <code>delimiter</code> values;</li>
 <li>long cells;</li>
-<li>many rows;</li>
-<li>many columns up to the supported limit.</li>
+<li>many rows (modest on CRAN; larger under <code>skip_on_cran()</code>);</li>
+<li>many columns up to the supported limit, and one beyond it.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="differential-tests">Differential tests<a class="anchor" aria-label="anchor" href="#differential-tests"></a></h3>
-<p>For canonical, standards-compliant fixtures, compare values with <code><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">utils::read.csv()</a></code> where semantics overlap.</p>
+<p>For canonical, standards-compliant fixtures, compare values with <code>utils::read.csv(..., check.names = FALSE, stringsAsFactors = FALSE, na.strings = c("", "NA"))</code> where semantics overlap.</p>
 <p>Differential tests should compare parsed values, not require identical type-guessing or name-repair policies when those intentionally differ.</p>
+<p>A randomized round-trip test (<code><a href="https://rdrr.io/r/utils/write.table.html" class="external-link">write.csv()</a></code> of generated data frames → <code><a href="reference/read_csv.html">read_csv()</a></code> → <code><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical()</a></code>) exercises the numeric grammars and quoting cheaply; keep it deterministic with a fixed seed.</p>
+</div>
+<div class="section level3">
+<h3 id="conformance-tests">Conformance tests<a class="anchor" aria-label="anchor" href="#conformance-tests"></a></h3>
+<p><code>csv-spectrum</code> (<a href="https://github.com/max-mapper/csv-spectrum" class="external-link uri">https://github.com/max-mapper/csv-spectrum</a>, BSD-2-Clause) is the de facto acid test for CSV parsers: quoted commas, escaped quotes, embedded newlines with both LF and CRLF, empty fields, UTF-8, and JSON embedded in cells. <code>zucsv</code> passes 11 of its 12 fixtures.</p>
+<p>The twelfth, <code>location_coordinates</code>, is excluded because it is inconsistent with itself — its CSV and its JSON give different phone numbers, the JSON is a bare object where every other fixture is an array, and the CSV has a bare <code>"</code> inside an unquoted field. Three open upstream issues cover it.</p>
+<p><code>tools/update-csv-spectrum.R</code> regenerates <code>tests/testthat/test-spectrum.R</code> from a pinned upstream commit. The fixtures are transcribed as raw byte vectors rather than vendored as files: upstream keeps its CRLF fixtures correct through <code>.gitattributes</code>, which would not survive being copied here, and raw bytes in an R file cannot be normalised by a checkout, an editor, or <code>core.autocrlf</code>.</p>
+<p><code>csv-test-data</code> (<a href="https://github.com/sineemore/csv-test-data" class="external-link uri">https://github.com/sineemore/csv-test-data</a>) is a second, stricter RFC 4180 suite, including seven deliberately malformed files that a parser is meant to reject. <code>zucsv</code> agrees with 18 of its 25 fixtures. It is <strong>not</strong> transcribed into the test suite: the upstream repository declares no licence, so its files may not be redistributed. <code>tools/check-csv-test-data.R</code> clones it at run time instead and nothing from it ships.</p>
+<p>That script is a regression check rather than a report: every fixture has a recorded expectation, the seven deviations included, and it exits non-zero if reality stops matching. The deviations are all decisions taken elsewhere in this document:</p>
+<table class="table"><colgroup><col width="50%"><col width="50%"></colgroup><thead><tr><th>fixture</th>
+<th>why we differ</th>
+</tr></thead><tbody><tr><td>
+<code>all-empty</code>, <code>empty-one-column</code>
+</td>
+<td>blank records are skipped everywhere (§10, decision 2); the suite wants a blank line to be a row of one empty field</td>
+</tr><tr><td><code>header-no-rows</code></td>
+<td>representational: a header-only file gives zero rows but keeps its columns (§14), which the suite’s <code>[]</code> cannot express</td>
+</tr><tr><td><code>bad-header-no-header</code></td>
+<td>an empty file is a 0×0 data frame (§14); <code>zucsv</code> has no notion of a <em>required</em> header</td>
+</tr><tr><td><code>bad-header-wrong-header</code></td>
+<td>the suite checks the header equals <code>foo,bar,baz</code> — schema validation, not CSV parsing</td>
+</tr><tr><td>
+<code>bad-quotes-with-unescaped-quote</code>, <code>bad-unescaped-quote</code>
+</td>
+<td>a quote inside an unquoted cell is passed through, as Excel does (§14); only <code>zsv</code>’s unused SIMD engine rejects it</td>
+</tr></tbody></table><p>Only the last of these is a genuine strictness difference from RFC 4180, and it follows from §18’s choice of the compatibility parser.</p>
 </div>
 <div class="section level3">
 <h3 id="upstream-behavior-tests">Upstream behavior tests<a class="anchor" aria-label="anchor" href="#upstream-behavior-tests"></a></h3>
-<p>Include a small set of fixtures exercising the real-world quoting cases that motivated choosing <code>zsv</code>. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.</p>
+<p>Include a small set of fixtures exercising the real-world quoting cases that motivated choosing <code>zsv</code>, plus the confirmed empty-line, BOM, and unbalanced-quote behaviors from §17. These tests protect the R wrapper against changes introduced when the vendored backend is upgraded.</p>
 </div>
 <div class="section level3">
-<h3 id="sanitizers">Sanitizers<a class="anchor" aria-label="anchor" href="#sanitizers"></a></h3>
-<p>Development CI should periodically run the native code with AddressSanitizer and UndefinedBehaviorSanitizer where supported.</p>
+<h3 id="sanitizers-and-static-analysis">Sanitizers and static analysis<a class="anchor" aria-label="anchor" href="#sanitizers-and-static-analysis"></a></h3>
+<p>Development CI runs the native code under AddressSanitizer and UndefinedBehaviorSanitizer (e.g. the <code>rocker/r-devel-san</code> image), and the <code>PROTECT</code> discipline is checked with <code>rchk</code> before every CRAN submission (R-hub offers both).</p>
 </div>
 <div class="section level3">
 <h3 id="fuzzing">Fuzzing<a class="anchor" aria-label="anchor" href="#fuzzing"></a></h3>
@@ -519,54 +657,61 @@ row/column/type state</code></pre>
 <li>narrow versus wide tables;</li>
 <li>small versus large files.</li>
 </ul><p>Useful comparisons include:</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">utils</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">read.csv</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="fu">readr</span><span class="fu">::</span><span class="fu">read_csv</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="fu">data.table</span><span class="fu">::</span><span class="fu">fread</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="fu">zucsv</span><span class="fu">::</span><span class="fu">read_csv</span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">fread</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="fu">zucsv</span><span class="fu">::</span><span class="fu"><a href="reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>Benchmark scripts live outside the package build (<code>bench/</code>, listed in <code>.Rbuildignore</code>) so the comparison packages never enter <code>Suggests</code>.</p>
 <p>The goal of v0.1 is not to beat every established reader. The first performance requirement is that the native design does not introduce obvious avoidable overhead. Parser-only speed is less important than end-to-end time after R strings, vectors, type conversion, and the deliberate second pass are included.</p>
 </div>
 <div class="section level2">
 <h2 id="id_23-package-dependencies">23. Package dependencies<a class="anchor" aria-label="anchor" href="#id_23-package-dependencies"></a></h2>
 <p>The target dependency structure is:</p>
-<pre class="text"><code>R
+<pre class="text"><code>R (&gt;= 4.2.0)
 └── zucsv
     └── vendored zsv C sources</code></pre>
 <p>No runtime R package dependencies are required.</p>
-<p><code>testthat</code> may be used under <code>Suggests</code> for tests. Benchmark-only packages should also remain optional.</p>
+<p><code>testthat</code> is the only <code>Suggests</code> entry needed for tests. Benchmark-only packages stay out of <code>DESCRIPTION</code> entirely (§22).</p>
 </div>
 <div class="section level2">
 <h2 id="id_24-initial-file-level-implementation-plan">24. Initial file-level implementation plan<a class="anchor" aria-label="anchor" href="#id_24-initial-file-level-implementation-plan"></a></h2>
 <div class="section level3">
 <h3 id="rread_csvr"><code>R/read_csv.R</code><a class="anchor" aria-label="anchor" href="#rread_csvr"></a></h3>
-<ul><li>exported <code>read_csv()</code> wrapper;</li>
-<li>lightweight argument normalization;</li>
+<ul><li>exported <code><a href="reference/read_csv.html">read_csv()</a></code> wrapper;</li>
+<li>lightweight argument normalization and R-level errors for bad argument shapes;</li>
+<li>
+<code><a href="https://rdrr.io/r/base/path.expand.html" class="external-link">path.expand()</a></code>;</li>
 <li>
 <code><a href="https://rdrr.io/r/base/CallExternal.html" class="external-link">.Call()</a></code> invocation;</li>
-<li>roxygen documentation.</li>
+<li>roxygen documentation with <code>@return</code> and runnable <code>@examples</code>.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="srcread_csvc"><code>src/read_csv.c</code><a class="anchor" aria-label="anchor" href="#srcread_csvc"></a></h3>
-<ul><li>file opening;</li>
-<li>parser configuration;</li>
+<ul><li>
+<code>C_read_csv()</code> entry point;</li>
+<li>reader struct, <code>R_UnwindProtect()</code> body and cleanup;</li>
+<li>file opening and parser configuration;</li>
 <li>pass 1 and pass 2 orchestration;</li>
-<li>row-width validation;</li>
+<li>record numbering, blank-record skipping, width validation;</li>
 <li>data-frame construction;</li>
-<li>error context.</li>
+<li>error context and message formatting.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="srcconvertc"><code>src/convert.c</code><a class="anchor" aria-label="anchor" href="#srcconvertc"></a></h3>
-<ul><li>NA matching;</li>
-<li>logical recognition;</li>
-<li>integer recognition/conversion;</li>
-<li>double recognition/conversion;</li>
+<ul><li>NA table construction and matching;</li>
+<li>logical, integer, and double grammar checks on <code>{pointer, length}</code> cells;</li>
+<li>integer accumulation with overflow detection;</li>
+<li>
+<code>R_strtod()</code> conversion via scratch buffer;</li>
+<li>UTF-8 validation;</li>
 <li>character materialization;</li>
-<li>type inference state.</li>
+<li>per-column inference state and final type selection.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="srczucsvh"><code>src/zucsv.h</code><a class="anchor" aria-label="anchor" href="#srczucsvh"></a></h3>
 <ul><li>internal types;</li>
-<li>constants;</li>
+<li>constants (column cap, record-size cap, interrupt interval, message truncation length);</li>
 <li>conversion enums;</li>
 <li>parser-pass state structures.</li>
 </ul></div>
@@ -575,31 +720,76 @@ row/column/type state</code></pre>
 <ul><li>native routine registration.</li>
 </ul></div>
 <div class="section level3">
+<h3 id="srcmakevars-srcmakevarswin">
+<code>src/Makevars</code>, <code>src/Makevars.win</code>
+<a class="anchor" aria-label="anchor" href="#srcmakevars-srcmakevarswin"></a></h3>
+<ul><li>explicit object list and include paths (§19).</li>
+</ul></div>
+<div class="section level3">
 <h3 id="srcvendorzsv"><code>src/vendor/zsv/</code><a class="anchor" aria-label="anchor" href="#srcvendorzsv"></a></h3>
-<ul><li>unmodified vendored parser subset;</li>
-<li>upstream license.</li>
+<ul><li>vendored parser subset, upstream license, <code>UPSTREAM</code> record.</li>
 </ul></div>
 </div>
 <div class="section level2">
-<h2 id="id_25-definition-of-done-for-v01">25. Definition of done for v0.1<a class="anchor" aria-label="anchor" href="#id_25-definition-of-done-for-v01"></a></h2>
+<h2 id="id_25-cran-requirements">25. CRAN requirements<a class="anchor" aria-label="anchor" href="#id_25-cran-requirements"></a></h2>
+<p>CRAN acceptance is a v0.1 goal, and several of its policies shape the code rather than just the paperwork. Consolidated here so nothing is discovered at submission time.</p>
+<div class="section level3">
+<h3 id="metadata-and-licensing">Metadata and licensing<a class="anchor" aria-label="anchor" href="#metadata-and-licensing"></a></h3>
+<ul><li>
+<code>Title</code> in title case, no trailing period; <code>Description</code> is a paragraph that names <code>'zsv'</code> in single quotes with its URL in angle brackets and does not start with “This package”.</li>
+<li>
+<code>Authors@R</code> lists the <code>zsv</code> copyright holder with <code>role = "cph"</code>; <code>inst/COPYRIGHTS</code> states which files are theirs and under which license; <code>LICENSE.note</code> points there. CRAN requires copyright of bundled code to be unambiguous from <code>DESCRIPTION</code> alone.</li>
+<li>
+<code>LICENSE</code> holds only the MIT <code>YEAR</code>/<code>COPYRIGHT HOLDER</code> lines; <code>LICENSE.md</code> stays in <code>.Rbuildignore</code>.</li>
+<li>
+<code>Depends: R (&gt;= 4.2.0)</code>; <code>URL</code> and <code>BugReports</code> set.</li>
+<li>
+<code>.Rbuildignore</code> covers every non-standard top-level file (<code>zucsv-design.md</code>, <code>ROADMAP.md</code>, <code>CLAUDE.md</code>, <code>bench/</code>, <code>_pkgdown.yml</code>, <code>.github/</code>).</li>
+</ul></div>
+<div class="section level3">
+<h3 id="compiled-code">Compiled code<a class="anchor" aria-label="anchor" href="#compiled-code"></a></h3>
+<ul><li>No <code>exit</code>, <code>abort</code>, <code>assert</code>, <code>printf</code>-family output to stdout/stderr, or <code>rand</code> anywhere under <code>src/</code>, vendored code included.</li>
+<li>Only documented R API entry points; <code>R_NO_REMAP</code> everywhere.</li>
+<li>Clean under <code>-Wall -pedantic -Wstrict-prototypes</code> on GCC and Clang, under C23, and under <code>_R_CHECK_COMPILATION_FLAGS_</code>; no flag or diagnostic suppression in <code>Makevars</code>.</li>
+<li>Clean under ASan/UBSan, valgrind, and <code>rchk</code>. CRAN runs these after acceptance and asks for fixes within two weeks.</li>
+<li>No GNU make features without <code>SystemRequirements: GNU make</code>.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="documentation-and-tests">Documentation and tests<a class="anchor" aria-label="anchor" href="#documentation-and-tests"></a></h3>
+<ul><li>Every exported function has <code>\value</code> (roxygen <code>@return</code>) and examples that run in under a few seconds without network or non-temp files.</li>
+<li>Tests write only under <code><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir()</a></code> and finish quickly on CRAN; large inputs are behind <code>skip_on_cran()</code>.</li>
+<li>
+<code>NEWS.md</code> and <code>cran-comments.md</code> exist; <code>README.md</code> has a real example.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="process">Process<a class="anchor" aria-label="anchor" href="#process"></a></h3>
+<ul><li>
+<code>R CMD check --as-cran</code> on current R-devel is clean (no WARNINGs, no NOTEs beyond “new submission”) on Linux, macOS, and Windows before submitting.</li>
+<li>First submissions get a human review; the usual requests concern <code>Description</code> wording, <code>\value</code>, examples, and bundled-code copyright — all covered above.</li>
+</ul></div>
+</div>
+<div class="section level2">
+<h2 id="id_26-definition-of-done-for-v01">26. Definition of done for v0.1<a class="anchor" aria-label="anchor" href="#id_26-definition-of-done-for-v01"></a></h2>
 <p>The first release is complete when:</p>
 <ol style="list-style-type: decimal"><li>
-<code>read_csv()</code> reads ordinary and quoted CSV files into correct R data frames.</li>
+<code><a href="reference/read_csv.html">read_csv()</a></code> reads ordinary and quoted CSV files into correct R data frames.</li>
 <li>Header and no-header modes are stable.</li>
 <li>Basic type inference is deterministic and documented.</li>
 <li>
 <code>col_types</code> can force all four supported primitive types.</li>
 <li>Missing values work as documented.</li>
-<li>Row-width mismatches produce clear errors.</li>
+<li>Row-width mismatches, NULs, and invalid UTF-8 produce the documented errors.</li>
+<li>Blank-record, BOM, and unbalanced-quote behavior are pinned by fixtures.</li>
 <li>Large reads are interruptible.</li>
 <li>All parser/file resources are cleaned up on errors.</li>
-<li>The package passes <code>R CMD check --as-cran</code> on Linux, macOS, and Windows.</li>
-<li>Native tests pass under ASan/UBSan in development CI.</li>
-<li>The vendored <code>zsv</code> version and license are documented.</li>
+<li>The package passes <code>R CMD check --as-cran</code> on R-devel on Linux, macOS, and Windows.</li>
+<li>Native code passes ASan/UBSan, valgrind, and <code>rchk</code>.</li>
+<li>The vendored <code>zsv</code> version, patches, and license are documented (<code>UPSTREAM</code>, <code>inst/COPYRIGHTS</code>).</li>
 <li>Benchmarks confirm that the R wrapper is not introducing pathological overhead.</li>
+<li>The package is accepted on CRAN.</li>
 </ol></div>
 <div class="section level2">
-<h2 id="id_26-likely-v02-additions">26. Likely v0.2 additions<a class="anchor" aria-label="anchor" href="#id_26-likely-v02-additions"></a></h2>
+<h2 id="id_27-likely-v02-additions">27. Likely v0.2 additions<a class="anchor" aria-label="anchor" href="#id_27-likely-v02-additions"></a></h2>
 <p>After v0.1 is stable, candidates are:</p>
 <ul><li>
 <code>write_csv()</code>;</li>
@@ -613,19 +803,111 @@ row/column/type state</code></pre>
 <code>skip</code> and <code>n_max</code>;</li>
 <li>column selection;</li>
 <li>explicit ragged-row handling;</li>
+<li>an <code>encoding</code> argument;</li>
 <li>more flexible column-type specifications;</li>
 <li>user-configurable resource limits;</li>
 <li>integration with <code>zukomp</code> for compressed input.</li>
 </ul><p>Parallel parsing should come later than the SIMD/fast parser because interaction with R’s single-threaded API and column materialization requires a separate design rather than merely turning on an upstream option.</p>
 </div>
 <div class="section level2">
-<h2 id="id_27-core-design-principle">27. Core design principle<a class="anchor" aria-label="anchor" href="#id_27-core-design-principle"></a></h2>
+<h2 id="id_28-core-design-principle">28. Core design principle<a class="anchor" aria-label="anchor" href="#id_28-core-design-principle"></a></h2>
 <p>The first version should keep the boundary simple:</p>
 <pre class="text"><code>zsv owns CSV syntax
 zucsv owns R semantics</code></pre>
 <p><code>zsv</code> should decide where rows and fields begin and end. <code>zucsv</code> should decide what those fields mean in R, how missing values are represented, how columns are typed, and how errors are presented.</p>
 <p>That separation gives <code>zucsv</code> a small public API while retaining the option to adopt more of <code>zsv</code>’s performance capabilities later without redesigning the package.</p>
 </div>
+<div class="section level2">
+<h2 id="id_29-decision-log">29. Decision log<a class="anchor" aria-label="anchor" href="#id_29-decision-log"></a></h2>
+<p>Decisions taken in the 2026-09-12 revision that were open or unstated in the first draft. Each is reversible before implementation starts; after that, changing one means changing fixtures.</p>
+<table class="table"><colgroup><col width="7%"><col width="25%"><col width="55%"><col width="12%"></colgroup><thead><tr><th>#</th>
+<th>Decision</th>
+<th>Alternative rejected</th>
+<th>Why</th>
+</tr></thead><tbody><tr><td>1</td>
+<td><code>Depends: R (&gt;= 4.2.0)</code></td>
+<td>Support R 4.0/4.1</td>
+<td>UTF-8 native encoding on Windows makes non-ASCII paths and strings uniform; avoids a <code>_wfopen</code> branch.</td>
+</tr><tr><td>2</td>
+<td>Blank records are skipped everywhere (§10)</td>
+<td>Treat a blank line as a one-field record (width error in multi-column files)</td>
+<td>Files ending in <code>\n\n</code> are common; readr and <code>fread</code> skip by default; the single-column ambiguity is documented and resolved by quoting <code>""</code>.</td>
+</tr><tr><td>3</td>
+<td>
+<code>Inf</code>, <code>-Inf</code>, <code>+Inf</code>, <code>NaN</code> are double syntax (§11)</td>
+<td>Character fallback</td>
+<td>
+<code><a href="https://rdrr.io/r/utils/write.table.html" class="external-link">write.csv()</a></code> emits them; base R output must round-trip. Case-sensitive to stay strict.</td>
+</tr><tr><td>4</td>
+<td>Leading zeros are integer syntax (§11)</td>
+<td>Character fallback to protect ZIP codes</td>
+<td>Matches <code><a href="https://rdrr.io/r/utils/type.convert.html" class="external-link">utils::type.convert()</a></code>; <code>col_types = "character"</code> is the documented escape.</td>
+</tr><tr><td>5</td>
+<td>Numeric conversion is identical to <code><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric()</a></code> (§11)</td>
+<td>libc <code>strtod</code>, a correctly-rounded parser</td>
+<td>Correctly rounded would be <em>more</em> accurate than base R – <code>as.numeric("0.799012")</code> is one ULP off on x87 – but it would differ from <code><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">read.csv()</a></code> on ~0.02% of ordinary decimals, and no other reader agrees with any other either (<code>fread</code> matches base R, <code>vroom</code> is correctly rounded). Matching base R exactly is the guarantee users can check. Decision 15 is how that is done fast.</td>
+</tr><tr><td>6</td>
+<td>Invalid UTF-8 is an error (§13)</td>
+<td>Mark as <code>CE_UTF8</code> unvalidated, or as <code>CE_BYTES</code>
+</td>
+<td>Early, located failure beats a later <code>invalid multibyte string</code> deep in user code; <code>encoding=</code> in v0.2 is the escape.</td>
+</tr><tr><td>7</td>
+<td>Row limit is <code>INT_MAX</code> data rows (§15)</td>
+<td><code>R_XLEN_T_MAX</code></td>
+<td>
+<code>data.frame</code> row names and <code><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow()</a></code> are integer; a longer object would not be a valid data frame.</td>
+</tr><tr><td>8</td>
+<td>Pass 1 validates everything; pass 2 only converts (§9)</td>
+<td>Validate forced types lazily in pass 2</td>
+<td>Pass 2 never errors on content, so the only pass-2 failure is “file changed”, and allocation happens once with full knowledge.</td>
+</tr><tr><td>9</td>
+<td>Cleanup via <code>R_UnwindProtect()</code> plus <code>R_alloc()</code> for all scratch memory (§16)</td>
+<td>External pointer with finalizer; manual <code>free()</code> before each <code>Rf_error()</code>
+</td>
+<td>Only two resources need manual cleanup; a finalizer would close the file at GC time rather than at error time.</td>
+</tr><tr><td>10</td>
+<td>Delimiter must be a single ASCII byte (§4)</td>
+<td>Any single byte</td>
+<td>Bytes &gt;= 0x80 are never a whole character in UTF-8, so the restriction only removes inputs that could not have worked.</td>
+</tr><tr><td>11</td>
+<td>A blank record is one unquoted zero-length cell (§10)</td>
+<td>Any one-cell zero-length record</td>
+<td>The parser reports per-cell quoting, so <code>""</code> on its own line stays distinguishable from a bare blank line. Decision #2’s documented cost is smaller than it looked when it was taken.</td>
+</tr><tr><td>12</td>
+<td>
+<code>max_columns</code> is set to the cap plus one (§15)</td>
+<td>Set it to the cap</td>
+<td>The parser truncates at <code>max_columns</code> silently, so a record reporting exactly the cap is ambiguous. One spare slot turns “at the limit” into “over the limit”.</td>
+</tr><tr><td>13</td>
+<td>A zero-cell record means an oversize row (§15)</td>
+<td>Trust a parser status code</td>
+<td>There is no status for it — the row is dropped silently. A blank line still yields one cell, so zero cells cannot arise any other way.</td>
+</tr><tr><td>14</td>
+<td>
+<code>zucsv</code> installs a no-op <code>errprintf</code> (§16)</td>
+<td>Leave <code>opts.errf</code> unset</td>
+<td>Unset means <code>stderr</code>. Routing it to a no-op means no vendored code can write to the R session’s stderr under any input, which is what CRAN’s policy is about.</td>
+</tr><tr><td>15</td>
+<td>Double conversion transcribes <code>R_strtod5()</code> and self-calibrates against <code>R_strtod()</code> at first use (§11)</td>
+<td>Call <code>R_strtod()</code> per cell (46 ns); guess R’s <code>LDOUBLE</code> type from a macro</td>
+<td>The transcription is 2.5x faster (with two exactness shortcuts: uint64 digit accumulation while the running integer is exact in the accumulator, and a power-of-ten table filled by R’s own loop) and was verified bit-identical on 8M inputs, shortcuts against verbatim loops for both accumulator types, but R exposes no macro for its <code>LDOUBLE</code> choice – a typedef guess silently broke identity on the development machine and the parity test caught it. Probing <code>R_strtod()</code> once per session picks the right instance on any build, and the per-cell call remains as the fallback if neither matches.</td>
+</tr><tr><td>16</td>
+<td>Pass 2 reuses the previous <code>CHARSXP</code> per column when the bytes match (§5)</td>
+<td>Call <code>mkCharLenCE()</code> for every cell; a hash of recent values</td>
+<td>Real categorical columns repeat: one <code>memcmp</code> beats hashing into R’s global string cache, 24.1 → 8.0 ns/cell on KEN_ALL’s prefecture column, 18% end to end on run-heavy data and ~2% cost when nothing repeats. A local hash table to catch non-adjacent repeats measured <em>worse</em> than both, so it was not built. The comparison is against the stored <code>CHARSXP</code>’s own bytes, never the previous cell’s, which live in the parser’s reused buffer.</td>
+</tr><tr><td>17</td>
+<td>Keep the pull API; do not adopt the SIMD engine (§18)</td>
+<td>Push API with <code>scan_engine = FAST</code>, worth ~10% on numeric and more on text</td>
+<td>The fast engine returns un-normalized cells, so adopting it means reimplementing CSV unquoting in <code>zucsv</code> — the one thing §28 assigns to <code>zsv</code> — and a quoted empty cell would arrive as two bytes, quietly changing §10. Prototyped and reverted; the measurements are in <code>tools/zsv-behavior.md</code>.</td>
+</tr><tr><td>18</td>
+<td>Inference skips the double grammar when the integer grammar accepts (§11)</td>
+<td>Test all three grammars on every cell</td>
+<td>Integer syntax is a subset of double syntax, so a cell the integer grammar takes is already known valid double and <code>can_double</code> stays true. Removes a whole digit scan per cell from an integer column, measured 0.131s → 0.119s on a 2M-cell integer file — the one shape none of the earlier conversion work helped. The subset claim is checked exhaustively over short strings and 2M random digit strings.</td>
+</tr><tr><td>19</td>
+<td>Conversion state is filled once from <code>R_init_zucsv()</code>, and calibration probes go through <code>zucsv_as_double()</code> (§11)</td>
+<td>Lazy initialisation on first use; calibration calling the two instances directly</td>
+<td>Lazy statics would be a data race the moment conversion moved to worker threads, and cost a branch besides. Routing the probes through the public entry point keeps each converter at exactly one call site: calling them directly let the compiler unroll the probe loop, inline a converter per probe, and spend the budget it needed for the hot path — 0.138s → 0.201s on a 2M-cell numeric file from nothing but a longer probe list.</td>
+</tr></tbody></table></div>
 </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
@@ -633,7 +915,7 @@ zucsv owns R semantics</code></pre>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by First Last.</p>
+  <p>Developed by Pedro Baltazar.</p>
 </div>
 
 <div class="pkgdown-footer-right">
