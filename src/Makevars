@@ -1,0 +1,14 @@
+# No optimisation, architecture or diagnostic flags here: CRAN forbids them.
+# SIMD selection inside zsv is driven by the compiler's own baseline macros
+# (__AVX2__, __ARM_NEON, ...), so it adapts without -march.
+PKG_CPPFLAGS = -I. -Ivendor/zsv/include
+
+# vendor/zsv/src/zsv.c is a unity build that #includes the other vendored .c
+# files, so it is the only vendored object. Listed explicitly: src/Makevars
+# must work with a POSIX make, so no $(wildcard).
+OBJECTS = init.o \
+          convert.o \
+          read_csv.o \
+          vendor/zsv/src/zsv.o
+
+all: $(SHLIB)

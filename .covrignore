@@ -1,0 +1,5 @@
+# Vendored third-party sources. zucsv neither tests nor should test zsv's
+# internals -- its behaviour is pinned from the outside by
+# tests/testthat/test-upstream.R -- and including ~1450 lines of it drags the
+# reported figure down to something that says nothing about this package.
+src/vendor/

@@ -1,0 +1,210 @@
+---
+title: "Reading CSV files with zucsv"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(zucsv)
+```
+
+`zucsv` reads delimited text files into ordinary R data frames, using the
+[`zsv`](https://github.com/liquidaty/zsv) C parser as its backend. This article
+covers the whole package — there is one exported function — and, more usefully,
+the handful of decisions that make it behave differently from the readers you
+already have.
+
+## Why another CSV package
+
+R is not short of CSV readers. `zucsv` is not trying to replace `data.table` or
+`readr`; it is a smaller thing with different priorities:
+
+- **Semantics you can check.** Numeric conversion is bit-identical to
+  `as.numeric()`, by construction rather than by coincidence.
+- **Errors where the problem is.** Invalid UTF-8, an embedded NUL or a ragged
+  row is an error naming the record and column, not a value that fails later
+  somewhere else.
+- **No silent repair.** Duplicate column names stay duplicated, nothing is
+  whitespace-trimmed, and a value that will not convert to a type you asked for
+  is an error rather than `NA`.
+- **No dependencies, no system library.** The parser is bundled and pinned.
+- **A small surface.** One function, five arguments, and a documented list of
+  what it deliberately does not do.
+
+If you want the fastest possible reader, use `data.table::fread()`. If you want
+tidyverse integration, use `readr`. `zucsv` optimises for predictability.
+
+## The API
+
+```{r, eval = FALSE}
+read_csv(file, header = TRUE, delimiter = ",", na = c("", "NA"), col_types = NULL)
+```
+
+| argument | what it does |
+|---|---|
+| `file` | path to a local file; `~` is expanded |
+| `header` | first record supplies names, or generate `V1`…`Vn` |
+| `delimiter` | any single ASCII byte — comma, tab, semicolon, pipe |
+| `na` | exact cell values to read as missing, or `NULL` for none |
+| `col_types` | force `logical`, `integer`, `double` or `character` |
+
+```{r}
+path <- tempfile(fileext = ".csv")
+writeLines(c(
+  "id,name,score,active",
+  "1,Ada,9.5,TRUE",
+  "2,Linus,8.0,FALSE",
+  "3,Grace,,TRUE"
+), path)
+
+df <- read_csv(path)
+df
+str(df)
+```
+
+Other delimiters need no separate function:
+
+```{r}
+tsv <- tempfile(fileext = ".tsv")
+writeLines(c("a\tb", "1\t2"), tsv)
+read_csv(tsv, delimiter = "\t")
+```
+
+## Type inference
+
+Columns are inferred over `logical`, `integer`, `double` and `character`, in
+that order, using **every** value in the column rather than a sample. A column
+is only narrower than `character` if every non-missing value in the whole file
+fits.
+
+```{r}
+types <- tempfile(fileext = ".csv")
+writeLines(c("lgl,int,dbl,chr", "TRUE,1,1.5,x", "FALSE,2,2.5,y"), types)
+vapply(read_csv(types), typeof, "")
+```
+
+Only four spellings are logical — `TRUE`, `FALSE`, `true`, `false`. `T`, `yes`
+and `1` are not, because in real data they are far more often something else.
+
+```{r}
+spellings <- tempfile(fileext = ".csv")
+writeLines(c("a,b,c", "T,yes,TRUE", "F,no,FALSE"), spellings)
+vapply(read_csv(spellings), typeof, "")
+```
+
+### Forcing types
+
+`col_types` takes one value for every column, or one value for all of them. A
+cell that will not convert is an error naming the row, the column and the
+value:
+
+```{r, error = TRUE}
+read_csv(path, col_types = c("integer", "character", "double", "logical"))
+
+read_csv(path, col_types = "integer")
+```
+
+That strictness is the point. A reader that turned `"Ada"` into `NA` here would
+be losing data quietly.
+
+## Four things that surprise people
+
+These are all deliberate, and all of them are the kind of thing worth knowing
+before you meet them in a 200-megabyte file.
+
+**Blank lines are skipped, everywhere.** Leading, trailing or in the middle —
+they are not rows.
+
+```{r}
+blanks <- tempfile(fileext = ".csv")
+writeLines(c("a,b", "1,2", "", "3,4", ""), blanks)
+nrow(read_csv(blanks))
+```
+
+A line of only whitespace or only delimiters is *not* blank: it is a record of
+empty cells, and must match the table's width. In a one-column file, write an
+intentional empty cell as `""` — a bare empty line is skipped.
+
+**Nothing is trimmed.** `" 42"` is text, because it has a space in it.
+
+```{r}
+padded <- tempfile(fileext = ".csv")
+writeLines(c("a", " 42", "1"), padded)
+read_csv(padded)$a
+```
+
+**Leading zeros are integers.** This matches `utils::type.convert()`, and it is
+how postal codes and zip codes lose their leading zero in every reader. Use
+`col_types` when the column is an identifier rather than a number.
+
+```{r}
+codes <- tempfile(fileext = ".csv")
+writeLines(c("zip", "0600000", "1000001"), codes)
+read_csv(codes)$zip
+read_csv(codes, col_types = "character")$zip
+```
+
+**Column names are kept exactly**, duplicates and empty strings included. No
+name repair.
+
+```{r}
+dupes <- tempfile(fileext = ".csv")
+writeLines(c("a,a,", "1,2,3"), dupes)
+names(read_csv(dupes))
+```
+
+## Errors say where
+
+Structural problems name the record and the column. Records are numbered as
+they appear, header included, so the numbers match what you see in an editor.
+
+```{r, error = TRUE}
+ragged <- tempfile(fileext = ".csv")
+writeLines(c("a,b", "1,2", "3,4,5"), ragged)
+read_csv(ragged)
+```
+
+Text that cannot be carried into an R string is an error too, rather than
+something that fails later:
+
+```{r, error = TRUE}
+bad <- tempfile(fileext = ".csv")
+con <- file(bad, "wb")
+writeBin(c(charToRaw("a,b\n"), as.raw(c(0xFF, 0xFE)), charToRaw(",2\n")), con)
+close(con)
+read_csv(bad)
+```
+
+The [KEN_ALL article](japanese-postal-codes.html) shows why that matters on a
+real file, and what the other readers do with the same input.
+
+## Missing values
+
+`na` is a set of exact cell values, matched after unquoting. Quoted and
+unquoted forms are therefore the same thing, and nothing is trimmed first.
+
+```{r}
+miss <- tempfile(fileext = ".csv")
+writeLines(c("a,b,c", 'NA,"NA", NA'), miss)
+read_csv(miss)
+
+read_csv(miss, na = NULL)
+```
+
+## Performance
+
+Faster than `utils::read.csv()` by 2–12× depending on shape; slower than
+`data.table::fread()`, which is multi-threaded and single-pass. The
+[benchmark results](https://github.com/pedrobtz/zucsv/blob/main/bench/RESULTS.md)
+have the numbers and the method, including why the comparison against `vroom`
+needs care.
+
+## What it does not do
+
+v0.1 reads local files and nothing else. There is no `write_csv()`, no URL or
+connection input, no compressed files, no date parsing, no column selection, no
+`skip` or `n_max`, and no `encoding` argument — convert the file first, as the
+KEN_ALL article shows. The full list, and the reasoning, is in the package's
+design document.

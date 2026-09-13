@@ -1,0 +1,199 @@
+---
+title: "Reading Japan Post's KEN_ALL, legacy and modern"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+Japan Post publishes every postal code in the country as a CSV, and has done
+for decades. It comes in two editions: an original in Shift-JIS, and a newer
+one in UTF-8. Between them they exercise most of what makes real CSV files
+harder than the examples in a parser's test suite, so they make a good place
+to show what `zucsv` does and — just as usefully — where it deliberately
+disagrees with the other readers.
+
+```{r download, include = FALSE}
+dir <- file.path(tempdir(), "kenall")
+dir.create(dir, showWarnings = FALSE)
+
+fetch <- function(url, dest) {
+  if (file.exists(dest)) return(TRUE)
+  ok <- tryCatch({
+    utils::download.file(url, dest, quiet = TRUE, mode = "wb")
+    file.exists(dest) && file.size(dest) > 1e6
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+  ok
+}
+
+# Japan Post's own CDN has been returning a cached 404 for its whole
+# download tree, so these come from the Internet Archive's copies of the
+# official zips.
+base <- "https://web.archive.org/web/2025id_/https://www.post.japanpost.jp/zipcode/dl"
+sjis_zip <- file.path(dir, "ken_all.zip")
+utf8_zip <- file.path(dir, "utf_ken_all.zip")
+have <- fetch(paste0(base, "/kogaki/zip/ken_all.zip"), sjis_zip) &&
+        fetch(paste0(base, "/utf/zip/utf_ken_all.zip"), utf8_zip)
+
+if (have) {
+  utils::unzip(sjis_zip, exdir = dir)
+  utils::unzip(utf8_zip, exdir = dir)
+  sjis <- file.path(dir, "KEN_ALL.CSV")
+  utf8 <- file.path(dir, "utf_ken_all.csv")
+  have <- file.exists(sjis) && file.exists(utf8)
+}
+```
+
+```{r no-data, echo = FALSE, results = "asis", eval = !have}
+cat("> **The data could not be downloaded**, so the results below are not",
+    "shown. Everything in the prose still applies; re-run the article with",
+    "network access to reproduce it.\n")
+```
+
+## The legacy file is not UTF-8, and that matters
+
+`KEN_ALL.CSV` is Shift-JIS, has no header, and uses CRLF. Ask `zucsv` to read
+it and you get an error rather than a data frame:
+
+```{r sjis-zucsv, eval = have, error = TRUE}
+library(zucsv)
+read_csv(sjis, header = FALSE)
+```
+
+That is `zucsv` doing what it is supposed to do. Row 1, column 4 is the first
+field in the file containing a byte that is not valid UTF-8 — the half-width
+katakana `ﾎｯｶｲﾄﾞｳ`, at byte offset 26. The message names the record and the
+column, so you know both *what* is wrong and *where*.
+
+It is worth comparing, because the alternatives are not obviously worse until
+you look closely.
+
+```{r sjis-others, eval = have}
+first_bytes <- function(x) paste(utils::head(charToRaw(x), 6), collapse = " ")
+
+# data.table and vroom both accept the file and return something
+dt <- data.table::fread(sjis, header = FALSE, showProgress = FALSE)
+vr <- vroom::vroom(sjis, delim = ",", col_names = FALSE,
+                   show_col_types = FALSE, altrep = FALSE)
+
+c(fread = first_bytes(dt[[7]][1]),
+  vroom = first_bytes(vr[[7]][1]),
+  truth = first_bytes(
+    utils::read.csv(sjis, header = FALSE, fileEncoding = "CP932")[1, 7]))
+```
+
+Column 7 of the first record is the prefecture name, 北海道. Read correctly it
+is nine bytes of UTF-8. `fread` and `vroom` hand back the raw Shift-JIS bytes
+with no encoding mark, so nothing has failed yet — the failure arrives later,
+somewhere else, in whatever code first tries to treat those bytes as text.
+
+`utils::read.csv()` does error, but it takes about 100× longer to do it, and
+the message points at a byte sequence rather than a location. It is also an
+error you cannot print safely: the message itself contains the invalid bytes.
+
+### Reading it properly
+
+Convert the encoding first, then read:
+
+```{r sjis-converted, eval = have}
+converted <- file.path(dir, "KEN_ALL-utf8.csv")
+writeLines(
+  iconv(readLines(sjis, encoding = "CP932", warn = FALSE), "CP932", "UTF-8"),
+  converted, useBytes = TRUE
+)
+
+old <- read_csv(converted, header = FALSE)
+dim(old)
+old[1, c(3, 7, 8, 9)]
+```
+
+## The modern file
+
+`utf_ken_all.csv` is the same data, normalised to UTF-8 and to one row per
+record:
+
+```{r utf8, eval = have}
+new <- read_csv(utf8, header = FALSE)
+dim(new)
+vapply(new, function(x) class(x)[1], "")
+```
+
+Kanji comes back marked as UTF-8, with the character counts you would expect:
+
+```{r utf8-text, eval = have}
+x <- new[[7]][1]
+c(value = x, encoding = Encoding(x), nchar = nchar(x), bytes = nchar(x, "bytes"))
+```
+
+## The postal-code trap
+
+Column 3 is the seven-digit postal code, and it is the reason this file is a
+good teacher. Hokkaido's first entry is `0600000`:
+
+```{r zeros, eval = have}
+as_text <- read_csv(utf8, header = FALSE, col_types = "character")
+as_text[[3]][1]
+
+# inferred, it is a number
+new[[3]][1]
+
+# how many codes would lose a leading zero
+mean(substr(as_text[[3]], 1, 1) == "0")
+```
+
+About one code in eight begins with a zero, and reading the column as a number
+destroys it. `zucsv` infers `integer` here, and so do `read.csv()` and `fread`
+— this is not a difference between readers, it is what "looks like a number"
+means. The fix is to say so:
+
+```{r zeros-fixed, eval = have}
+fixed <- read_csv(utf8, header = FALSE,
+                  col_types = c("integer", rep("character", 8),
+                                rep("integer", 6)))
+fixed[[3]][1]
+```
+
+Leading zeros being integer syntax is a deliberate choice in `zucsv`, matching
+`utils::type.convert()`. `col_types` is the documented escape, and this file is
+exactly the case it exists for.
+
+## Whitespace is never trimmed
+
+Column 2 is the old five-digit code, space-padded to five characters:
+
+```{r padded, eval = have}
+as_text[[2]][1]
+class(new[[2]])
+class(utils::read.csv(utf8, header = FALSE)[[2]])
+```
+
+`zucsv` leaves `"060  "` as text, because it is text — nothing is trimmed
+before deciding a type. Base R trims first and calls it the number 60. Both are
+defensible; `zucsv` prefers not to silently discard bytes that were in the
+file.
+
+## One more thing the two editions differ on
+
+The legacy file splits long town names across consecutive records that share a
+postal code; the modern one keeps each record whole.
+
+```{r splitting, eval = have}
+c(old_rows = nrow(old), new_rows = nrow(new))
+
+# the longest town field in the modern file
+i <- which.max(nchar(as_text[[9]]))
+nchar(as_text[[9]][i])
+```
+
+That is a property of the data, not of CSV syntax — every reader sees the same
+row counts, and reassembling split records is the caller's job either way.
+
+## What to take from this
+
+* **Encoding problems should be loud.** `zucsv` refuses invalid UTF-8 and says
+  where it is. Deferring the failure to whatever code touches the string next
+  is not a kindness.
+* **`col_types` is not a performance knob.** On this file it is the difference
+  between keeping postal codes and quietly corrupting one in eight of them.
+* **Type inference cannot read your mind.** "Looks like a number" is a
+  syntactic question, and every reader here answers it the same way.

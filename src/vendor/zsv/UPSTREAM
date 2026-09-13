@@ -1,0 +1,19 @@
+Upstream:  https://github.com/liquidaty/zsv.git
+Describe:  v1.4.3-41-g6195954
+Commit:    61959542b18581e38f291957d9a500fab77be719
+Vendored:  2026-09-12
+By:        tools/update-zsv.sh
+License:   MIT (see LICENSE in this directory)
+
+Only the parser core is vendored. The zsv CLI application, and the SQL,
+SQLite, JSON, sheet-viewer and extension facilities, are not part of zucsv.
+ZSV_EXTRAS is never defined, which is what keeps <sqlite3.h> and
+<zsv/utils/arg.h> out of the build.
+
+Verified behavior for this commit: ../../../tools/zsv-behavior.md
+Re-verify that file on every upgrade; tests/testthat/test-upstream.R is
+what catches a change.
+
+Patches applied (tools/patches, in sorted order):
+  0001-guard-unused-forward-declaration.patch guard an unused forward declaration so -Wunused-function is clean
+  0002-no-stderr-default-sink.patch        remove stderr/fprintf references so R CMD check's compiled-code test passes

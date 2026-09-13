@@ -1,0 +1,61 @@
+# Reason: remove stderr/fprintf references so R CMD check's compiled-code test passes
+#
+# R CMD check --as-cran inspects the shared object for references to stdout
+# and stderr and reports them: "Compiled code should not call entry points
+# which ... write to stdout/stderr instead of to the console". The vendored
+# parser reaches stderr in exactly two places, both of them only as the
+# fallback when the caller supplied no error stream, plus the
+# zsv_generic_fprintf default sink.
+#
+# zucsv always installs its own no-op errprintf, so no diagnostic could ever
+# have been emitted anyway; this patch makes that structural rather than a
+# matter of zucsv remembering to set an option. A caller that does want
+# diagnostics still gets them by supplying opts.errprintf and opts.errf.
+#
+# Upstream: not reported. This is a deliberate deviation for an embedded
+# build rather than a bug, so it is expected to live here permanently. If
+# upstream ever adds a build-time switch for the default sink, this patch
+# should be replaced by setting it.
+--- a/include/zsv/common.h
++++ b/include/zsv/common.h
+@@ -80,7 +80,17 @@
+ typedef size_t (*zsv_generic_read)(void *restrict, size_t n, size_t size, void *restrict);
+ typedef int (*zsv_generic_seek)(void *, long, int);
+ 
+-#define zsv_generic_fprintf (int (*)(void *, const char *, ...)) fprintf;
++/* zucsv: the default diagnostic sink is a no-op rather than fprintf.
++ * Embedded in an R package, this code may not write to stdout or stderr,
++ * and R CMD check reports any reference to those symbols. zucsv always
++ * installs its own errprintf, so nothing is lost; a caller that wants
++ * diagnostics still supplies opts.errprintf and opts.errf. */
++static inline int zsv_generic_discard(void *ctx, const char *fmt, ...) {
++  (void)ctx;
++  (void)fmt;
++  return 0;
++}
++#define zsv_generic_fprintf zsv_generic_discard;
+ #define zsv_generic_fclose (int (*)(void *)) fclose;
+ 
+ #ifdef ZSV_EXTRAS
+--- a/src/zsv.c
++++ b/src/zsv.c
+@@ -380,7 +380,7 @@
+     opts->max_columns = ZSV_MAX_COLS_DEFAULT;
+   if (opts->delimiter == '\n' || opts->delimiter == '\r' || opts->delimiter == '"') {
+     int (*errprintf)(void *, const char *fmt, ...) = opts->errprintf ? opts->errprintf : zsv_generic_fprintf;
+-    errprintf(opts->errf ? opts->errf : stderr, "Invalid delimiter\n");
++    errprintf(opts->errf, "Invalid delimiter\n");
+     return NULL;
+   }
+   struct zsv_scanner *scanner = calloc(1, sizeof(*scanner));
+--- a/src/zsv_internal.c
++++ b/src/zsv_internal.c
+@@ -696,7 +696,7 @@
+ static int zsv_scanner_init(struct zsv_scanner *scanner, struct zsv_opts *opts) {
+   size_t need_buff_size = 0;
+   scanner->errprintf = opts->errprintf ? opts->errprintf : zsv_generic_fprintf;
+-  scanner->errf = opts->errf ? opts->errf : stderr;
++  scanner->errf = opts->errf;
+   scanner->errclose = opts->errclose;
+   // via signed char: the sentinel is negative and plain char is unsigned on
+   // some targets (e.g. gcc/ARM Linux), where a bare == -2 never matches

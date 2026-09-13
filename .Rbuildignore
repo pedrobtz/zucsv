@@ -3,3 +3,13 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^CLAUDE\.md$
+^zucsv-design\.md$
+^ROADMAP\.md$
+^bench$
+^cran-comments\.md$
+\.o$
+\.so$
+\.dll$
+^\.covrignore$
+^vignettes/articles$
