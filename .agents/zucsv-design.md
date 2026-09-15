@@ -80,7 +80,7 @@ These features can be considered only after the basic parser-to-R boundary is st
 
 ## 4. Public API
 
-The initial public API consists of one exported function:
+The initial public API consists of two exported functions:
 
 ```r
 read_csv(
@@ -89,6 +89,12 @@ read_csv(
   delimiter = ",",
   na = c("", "NA"),
   col_types = NULL
+)
+
+sniff_csv(
+  file,
+  delimiter = ",",
+  na = c("", "NA")
 )
 ```
 
@@ -104,10 +110,36 @@ The package requires R >= 4.2.0. From that version the native encoding on Window
 
 ### `header`
 
-A length-one, non-missing logical value.
+A length-one logical value.
 
-- `TRUE`: the first parsed record supplies column names.
+- `TRUE` (the default): the first parsed record supplies column names.
 - `FALSE`: all records are data and names are generated as `V1`, `V2`, ... `Vn`.
+- `NA`: detect. The first parsed record is a header unless one of its fields is
+  syntactically a logical or a double under the grammars of §11. Every field being a
+  name is the evidence; one numeric-looking field is enough to decide the record is
+  data. A *quoted* field is skipped before either grammar is tried: quoting is the
+  writer saying the field is text, which is what a column name is, so `"2024"` and
+  `"TRUE"` are names where bare `2024` and `TRUE` are data (§29, decision 21). The
+  rest of the file is not consulted (§29, decision 20).
+
+Detection reads only the first record's own bytes. It consults neither `col_types` nor
+`na`: a forced type cannot contradict the verdict, and a cell that the caller declared
+missing still votes on its own syntax. `na` is deliberately excluded because `""` is in
+the default `na` set, so letting it vote would read the ordinary header `a,,c` as data.
+A file with no non-blank record has no first record to judge and resolves to `FALSE`.
+
+Because it sees one record, detection cannot reach the verdict that comparing against
+the rest of the file would in three shapes. The row count moves in both directions —
+reading names as data *adds* a row, reading data as names *costs* one:
+
+| input | `zucsv` | `fread`, DuckDB | rows vs. the other rule |
+|---|---|---|---|
+| `id,2024,2025` over numeric rows | data | header | one **more** |
+| `NA,NA,NA` over `1,2,3` | header | data | one fewer |
+| `"1","2"` over `"3","4"` | header | data | one fewer |
+
+The first two follow from reading one record; the third is decision 21's cost. Passing
+`header` explicitly is the answer in all three, and is what the documentation says.
 
 Header values are always treated as text and are never subject to `na` matching or type inference.
 
@@ -182,6 +214,43 @@ col_types has length 3 but the CSV has 5 columns
 ```
 
 No shorthand type codes, no aliases such as `"numeric"`, and no named partial specifications are supported in v0.1.
+
+### `sniff_csv()`
+
+`sniff_csv()` runs pass 1 and stops, returning what that pass learned instead of
+materialising columns: the header verdict, `ncol`, `nrow`, `col_names` and
+`col_types`. It is the answer to the tension in §28 between "`zucsv` owns R
+semantics, strictly" and an argument that guesses — the guess becomes something
+you can look at and then *stop making*:
+
+```r
+s <- sniff_csv(path)
+read_csv(path, header = s$header, col_types = s$col_types)
+```
+
+The second call infers nothing. It is a strict read against a schema the caller
+now owns, and it gives the same answer next month whatever the data does.
+
+Three properties are load-bearing:
+
+- **It is the same pass.** `sniff_csv()` and `read_csv()` share `zucsv_run()` and
+  `zucsv_read_body()`; sniffing is an early return once inference is final, not a
+  second implementation. A sniffer that ran its own inference could describe a file
+  differently from how the reader would read it, which would make it worse than
+  useless (§29, decision 22).
+- **It validates.** Pass 1 is where ragged rows, embedded NULs and invalid UTF-8
+  are caught, so `sniff_csv()` errors on them exactly as `read_csv()` does. A file
+  that sniffs cleanly cannot fail `read_csv()` on content.
+- **It costs the expensive pass**, not a cheap sample. It is for pinning decisions
+  down, not for calling before every read.
+
+The return value is a plain `list`, not an S3 object: it composes straight into
+`read_csv()`, and the type names it reports are `typeof()` spellings, so
+`col_types` needs no translation. An empty file reports `header = FALSE` with zero
+columns and zero rows.
+
+`sniff_csv()` does not detect the delimiter. Nothing in `zucsv` does — that is a
+separate guess with its own failure modes, and §3 keeps it out of v0.1.
 
 ## 5. Return value
 
@@ -360,8 +429,9 @@ Error messages refer to *records*, not lines, because a quoted field can span li
 
 The expected number of columns is established by:
 
-- the header record when `header = TRUE`;
-- the first non-blank data record when `header = FALSE`.
+- the header record when `header = TRUE`, or when `header = NA` and the first
+  non-blank record is detected as names;
+- the first non-blank data record otherwise.
 
 Every subsequent non-blank record must contain exactly that number of cells.
 
@@ -386,7 +456,14 @@ and test:
 
 - a record containing only whitespace or only delimiters is *not* blank; it is a record of one or more empty cells and is subject to the width check;
 - in a single-column file an intentional empty cell must be written as `""` to survive; an unquoted empty line is skipped;
-- with `header = TRUE`, the header is the first non-blank record.
+- with `header = TRUE`, the header is the first non-blank record, and with
+  `header = NA` it is that same record that detection judges.
+
+`zucsv` decides what counts as a blank record, not the parser. The parser is
+opened with `keep_empty_header_rows = 1` because its own default drops every
+*leading* record whose cells are all zero-length, using a blankness test that
+ignores quoting -- which would hide a first record of empty names, and a
+leading `""`, from the policy above.
 
 The parser does not skip blank lines itself — it emits them as one-cell
 records — so this policy is `zucsv`'s own. It holds regardless of what the
@@ -505,6 +582,10 @@ Required behavior:
 - a file consisting only of blank records is treated as empty;
 - a header-only file returns zero rows with one character column for each header field;
 - `header = FALSE` on a one-record file returns one row of data;
+- `header = NA` on a one-record file returns either one row of data or zero
+  rows and that record's names, by the rule in §4;
+- a record of empty names (`,`) is a header like any other, and an all-empty
+  first record is not silently dropped;
 - an empty data cell is `NA` under the default `na` setting, whether written as nothing or as `""`;
 - with `na = NULL` an empty cell is the empty string and makes its column `character`;
 - a trailing delimiter (`a,b,`) yields a final empty cell, so the record has three fields;
@@ -721,7 +802,7 @@ Fixtures are written by tests into `tempfile()` with `writeBin()` so line ending
 Test at least:
 
 - ordinary comma-separated files;
-- header/no-header input;
+- header, no-header and detected-header input;
 - single-column input;
 - quoted commas;
 - escaped quotes;
@@ -965,8 +1046,8 @@ CRAN acceptance is a v0.1 goal, and several of its policies shape the code rathe
 The first release is complete when:
 
 1. `read_csv()` reads ordinary and quoted CSV files into correct R data frames.
-2. Header and no-header modes are stable.
-3. Basic type inference is deterministic and documented.
+2. Header, no-header and detection (`header = NA`) modes are stable.
+3. Basic type inference is deterministic and documented, and `sniff_csv()` reports it.
 4. `col_types` can force all four supported primitive types.
 5. Missing values work as documented.
 6. Row-width mismatches, NULs, and invalid UTF-8 produce the documented errors.
@@ -1036,3 +1117,6 @@ Decisions taken in the 2026-09-12 revision that were open or unstated in the fir
 | 17 | Keep the pull API; do not adopt the SIMD engine (§18) | Push API with `scan_engine = FAST`, worth ~10% on numeric and more on text | The fast engine returns un-normalized cells, so adopting it means reimplementing CSV unquoting in `zucsv` — the one thing §28 assigns to `zsv` — and a quoted empty cell would arrive as two bytes, quietly changing §10. Prototyped and reverted; the measurements are in `tools/zsv-behavior.md`. |
 | 18 | Inference skips the double grammar when the integer grammar accepts (§11) | Test all three grammars on every cell | Integer syntax is a subset of double syntax, so a cell the integer grammar takes is already known valid double and `can_double` stays true. Removes a whole digit scan per cell from an integer column, measured 0.131s → 0.119s on a 2M-cell integer file — the one shape none of the earlier conversion work helped. The subset claim is checked exhaustively over short strings and 2M random digit strings. |
 | 19 | Conversion state is filled once from `R_init_zucsv()`, and calibration probes go through `zucsv_as_double()` (§11) | Lazy initialisation on first use; calibration calling the two instances directly | Lazy statics would be a data race the moment conversion moved to worker threads, and cost a branch besides. Routing the probes through the public entry point keeps each converter at exactly one call site: calling them directly let the compiler unroll the probe loop, inline a converter per probe, and spend the budget it needed for the hot path — 0.138s → 0.201s on a 2M-cell numeric file from nothing but a longer probe list. |
+| 20 | `header = NA` decides from the first record alone: a header unless one field is numeric or logical syntax (§4) | `fread`/duckdb's rule — compare the first record against the types inferred from the rest | Measured against both on six shapes, the two rules agree everywhere except a header row that itself holds a numeric-looking name over a numeric column (`1,score` over `5,10`), which zucsv reads as data. Buying that case costs the two-pass design its shape: the inferred types are final only at the end of pass 1, so the verdict would have to be deferred and the first record copied out of the parser's reused buffer, and `col_types` would need a rule for validating a record that is not yet known to be data. Deciding from the first record needs neither — it happens where the record is already live, and pass 2 is untouched. The default stays `TRUE`: detection is opt-in, so no existing result changes. |
+| 21 | A quoted field is text, and is skipped before either grammar, for detection (§4) | Judge the unquoted text, so `"2024"` and `2024` are the same evidence | Quoting is the one piece of authorial intent CSV carries, and `zucsv` already treats it as meaning something (decision 11: a quoted empty cell is not a blank line). A header of year or period names is an ordinary shape that the unquoted rule got wrong, and the flag is already on the cell, so the fix costs nothing. It is not free of consequence: a headerless file whose first record is entirely quoted numbers (`"1","2"`) now reads as a header, where `fread` and DuckDB read data. That shape needs a quote-everything writer *and* no header, which is rarer than a quoted header row, so the trade is taken deliberately and pinned by a test. |
+| 22 | `sniff_csv()` is an early return from `read_csv()`'s own pass 1 (§4) | A separate lighter-weight implementation that samples the head of the file, as `fread` and DuckDB sniffers do | The function's only value is that it reports what the reader *would* do; an independent implementation could disagree with it, and a sampled one would disagree on exactly the awkward files someone reaches for a sniffer to understand. Sharing the pass makes agreement structural rather than tested — the tests check it anyway, over twelve fixture shapes. The cost is that sniffing is not cheap: it reads the whole file. That is the honest price of an exact `nrow` and a `col_types` that is right about the last row as well as the first. |

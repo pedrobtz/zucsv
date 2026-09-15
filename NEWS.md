@@ -14,7 +14,13 @@ First release.
   is an error naming the row, column and value, never a silent `NA`.
 
 * `header`, `delimiter` and `na` control the header row, the field delimiter
-  (any single ASCII byte) and which cell values read as missing.
+  (any single ASCII byte) and which cell values read as missing. `header = NA`
+  detects whether the first record is names or data, from that record alone.
+
+* `sniff_csv()` reports how a file would be read --- header verdict, shape,
+  column names and inferred types --- without building the columns, so the
+  decisions can be inspected and then pinned:
+  `read_csv(f, header = s$header, col_types = s$col_types)` infers nothing.
 
 * Documented, tested behavior that is easy to get wrong elsewhere: blank
   lines are skipped everywhere, every record must have the same width, column
