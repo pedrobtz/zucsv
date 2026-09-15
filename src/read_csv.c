@@ -69,6 +69,13 @@ static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
   /* zsv sizes its scan buffer at 2 * max_row_size, and that buffer is the
      real limit on a record, so halve ours to land on ZUCSV_MAX_ROW_SIZE. */
   opts.max_row_size = ZUCSV_MAX_ROW_SIZE / 2;
+  /* zsv's default is to drop every leading record whose cells are all
+     zero-length, using a blankness test that ignores quoting -- so a real
+     first record of empty names, or a leading `""`, would never reach us and
+     SS10's policy would be applied to the wrong record. zucsv decides what a
+     blank record is (zucsv_is_blank_record(), decision 11); the parser must
+     hand over all of them. */
+  opts.keep_empty_header_rows = 1;
 
   r->parser = zsv_new(&opts);
   if (!r->parser)
