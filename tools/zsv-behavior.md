@@ -35,8 +35,8 @@ what the header comment on the function says.
 | `a,b\n1,2\n\n` (trailing blank) | **3 records**; the blank is `n=1, len=0, q=0` |
 | `a,b\n\n1,2\n` (interior blank) | **3 records**; the blank is `n=1, len=0, q=0` |
 | `a,b\n\n\n1,2\n` | **4 records**; one blank record each |
-| `\na,b\n1,2\n` (leading blank) | **2 records** — the leading blank is swallowed |
-| `\n\n` (blank-only file) | 0 records |
+| `\na,b\n1,2\n` (leading blank) | **2 records** at the default; **3** with `keep_empty_header_rows = 1` |
+| `\n\n` (blank-only file) | 0 records at the default; **2** with `keep_empty_header_rows = 1` |
 | `` (empty file) | 0 records |
 | `a,b\n` (header only) | 1 record |
 
@@ -45,10 +45,24 @@ with an empty value. `zucsv` implements the §10 skip policy itself by
 dropping any record with `n == 1 && len == 0 && !(q & ZSV_PARSER_QUOTE_CLOSED)`.
 
 The leading-blank asymmetry comes from `opts.keep_empty_header_rows`, which
-defaults to 0 ("zsv ignores empty header rows"). It does not matter to
-`zucsv`, whose policy discards those records anyway, but it does mean the
-parser's record numbering can differ from a byte-offset line count. `zucsv`
-numbers records as the parser emits them.
+defaults to 0 ("zsv ignores empty header rows"). **`zucsv` sets it to 1**, and
+must: the parser's own skipping uses `zsv_internal_row_is_blank()`
+(`src/vendor/zsv/src/zsv_internal.c`), which tests only `cells[i].len` and
+ignores `ZSV_PARSER_QUOTE_CLOSED`. At the default it therefore swallows not
+just leading bare blank lines but any leading record whose cells are all
+zero-length — a real first record of empty names (`,`), a leading `""`, a
+leading `"",""` — before §10 can apply. Those are exactly the records the
+quoting flag below is supposed to save, and the loss is silent: the next
+record is promoted to header and a data row disappears.
+
+With the flag set, every record reaches `zucsv` and the §10 policy decides.
+Record numbering then matches a byte-offset line count for leading blanks too,
+which is what makes §19's promise ("records are numbered ... including the
+header record and skipped blank records") true: `\n\na,b\n1,2,3\n` reports
+`CSV row 4`, where at the parser's default it reported `row 2`. That numbering
+is what `tests/testthat/test-upstream.R` pins, because it is the only place
+the parser's own emission is visible from R — a data-frame comparison cannot
+see it, since §10 discards the records either way.
 
 ## A quoted empty cell is distinguishable from a blank line
 
