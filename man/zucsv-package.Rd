@@ -17,11 +17,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: pedrobtz \email{pedrobtz@gmail.com}
+\strong{Maintainer}: Pedro Baltazar \email{pedrobtz@gmail.com}
 
 Authors:
 \itemize{
-  \item pedrobtz \email{pedrobtz@gmail.com}
+  \item Pedro Baltazar \email{pedrobtz@gmail.com}
 }
 
 Other contributors:
