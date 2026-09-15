@@ -24,8 +24,11 @@ test_that("argument shapes are rejected before the file is touched", {
   expect_error(read_csv(1), "single non-missing file path")
 
   f <- csv_file("a,b\n1,2\n")
-  expect_error(read_csv(f, header = NA), "must be TRUE or FALSE")
-  expect_error(read_csv(f, header = c(TRUE, FALSE)), "must be TRUE or FALSE")
+  # NA is the detect sentinel, not an error; see test-header-detection.R
+  expect_error(read_csv(f, header = c(TRUE, FALSE)), "must be TRUE, FALSE or NA")
+  expect_error(read_csv(f, header = "yes"), "must be TRUE, FALSE or NA")
+  expect_error(read_csv(f, header = 1), "must be TRUE, FALSE or NA")
+  expect_error(read_csv(f, header = NULL), "must be TRUE, FALSE or NA")
   expect_error(read_csv(f, na = 1), "character vector or NULL")
   expect_error(read_csv(f, na = c("x", NA)), "may not contain NA")
 })

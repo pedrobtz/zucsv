@@ -17,8 +17,12 @@ read_csv(
 
 \item{header}{If \code{TRUE} (the default), the first record supplies the
 column names. If \code{FALSE}, every record is data and columns are named
-\code{V1}, \code{V2}, ... Header values are always text: they are never matched
-against \code{na} and never type-inferred.}
+\code{V1}, \code{V2}, ... If \code{NA}, detect: the first record is treated as names
+unless one of its unquoted fields looks like a number or a logical, in
+which case it is data. A quoted field is always text, and so always
+counts as a name: \code{"2024"} and \code{"TRUE"} are column names where bare
+\code{2024} and \code{TRUE} are data. Header values are
+always text: they are never matched against \code{na} and never type-inferred.}
 
 \item{delimiter}{The field delimiter, as a single ASCII character.
 Defaults to \code{","}. A newline, carriage return, form feed or double
@@ -36,9 +40,10 @@ cell that cannot be converted to a forced type is an error, not a
 missing value.}
 }
 \value{
-A \link{data.frame} with one column per field. With \code{header = FALSE},
-or for an empty file, see the notes above for how names and dimensions
-are determined. An empty file gives a data frame with zero rows and
+A \link{data.frame} with one column per field. Names come from the
+first record when \code{header = TRUE}, or when \code{header = NA} and that record
+is detected as names; otherwise they are \code{V1}, \code{V2}, ... An empty file,
+or one of nothing but blank lines, gives a data frame with zero rows and
 zero columns; a header-only file gives zero rows but one column per
 header field.
 }
@@ -64,6 +69,23 @@ and empty strings. No name repair is performed.
 embedded NUL, is an error rather than something passed through to fail
 later. A UTF-8 BOM is ignored.
 \item A CR LF pair inside a quoted field is normalised to a single LF.
+\item \strong{\code{header = NA} looks at the first record only}, and at nothing else:
+not the rest of the file, not \code{col_types}, and not \code{na}. It therefore
+reaches a different verdict from \code{data.table::fread()} and DuckDB, which
+compare the first record against the types of the rest, on three shapes
+--- and the row count moves in both directions:
+\itemize{
+\item an unquoted header of numeric-looking names over numeric
+columns, such as \verb{id,2024,2025} above \verb{1,5,6}, reads as data, so
+the name record becomes a row and you get \strong{one row more};
+\item a first record that is entirely missing values, \verb{NA,NA,NA}
+above \verb{1,2,3}, reads as a header, costing \strong{one row};
+\item a headerless first record of entirely quoted numbers,
+\verb{"1","2"} above \verb{"3","4"}, reads as a header, costing \strong{one row}.
+}
+Detection is a convenience for files whose shape you do not know. When
+you do know, pass \code{header = TRUE} or \code{header = FALSE} and none of this
+applies.
 }
 }
 \examples{
@@ -79,5 +101,13 @@ read_csv(path)
 # Force a column's type rather than inferring it
 read_csv(path, col_types = c("character", "character"))
 
+# Detect whether the first record is a header
+read_csv(path, header = NA)
+
 unlink(path)
+}
+\seealso{
+\code{\link[=sniff_csv]{sniff_csv()}}, to see the header verdict and inferred types
+before committing to them --- and to pin them down so nothing is
+inferred on the next run.
 }
