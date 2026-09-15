@@ -145,6 +145,9 @@ parser actually does.
 - `_pkgdown.yml` `url:` set; pkgdown build green.
 - Optional but cheap: `spelling::spell_check_package()`, `urlchecker::url_check()`.
 - Bump `Version: 0.1.0`.
+- Added during this stage, outside the original plan: `header = NA` (design §4,
+  decisions 20-21) and `sniff_csv()` (design §4, decision 22). Both are documented,
+  tested and decision-logged; `read_csv()`'s default behaviour is unchanged.
 - Final checks: `devtools::check(remote = TRUE, manual = TRUE)`, `devtools::check_win_devel()`, `devtools::check_mac_release()`, R-hub `windows`, `macos-arm64`, `linux` on R-devel. Zero WARNINGs; zero NOTEs other than "New submission".
 - Submit with `devtools::submit_cran()` (or the web form); confirm the email.
 - Respond to reviewer feedback the same day where possible; typical asks are `Description` wording, `\value`, example runtime, bundled-code copyright — all pre-empted in §25 but expect at least one round.

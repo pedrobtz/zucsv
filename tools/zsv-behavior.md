@@ -78,6 +78,14 @@ single-column file an intentional empty cell written as `""` survives, while
 a bare empty line is skipped. The same flag distinguishes `,` from `"",""`
 in multi-column input.
 
+## `zsv_next_row()` returns only `done`, never `no_more_input`
+
+`zsv_next_row()` converts `zsv_status_no_more_input` into `zsv_status_done`
+before returning (vendored `src/zsv.c`), so a caller never observes the
+former. `zucsv_check_parse()` therefore treats `zsv_status_done` as the one
+clean end of input and errors on everything else, rather than testing for a
+status that cannot escape the parser.
+
 ## BOM
 
 A UTF-8 BOM is stripped by the parser: `\xEF\xBB\xBFa,b\n1,2\n` yields a

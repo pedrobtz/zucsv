@@ -160,5 +160,6 @@ int zucsv_accepts(zucsv_type type, const unsigned char *str, size_t len);
  * ------------------------------------------------------------------ */
 
 SEXP C_read_csv(SEXP file, SEXP header, SEXP delimiter, SEXP na, SEXP col_types);
+SEXP C_sniff_csv(SEXP file, SEXP delimiter, SEXP na);
 
 #endif /* ZUCSV_H */

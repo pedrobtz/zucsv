@@ -8,8 +8,12 @@
 #' @param file Path to a local file, as a single string. `~` is expanded.
 #' @param header If `TRUE` (the default), the first record supplies the
 #'   column names. If `FALSE`, every record is data and columns are named
-#'   `V1`, `V2`, ... Header values are always text: they are never matched
-#'   against `na` and never type-inferred.
+#'   `V1`, `V2`, ... If `NA`, detect: the first record is treated as names
+#'   unless one of its unquoted fields looks like a number or a logical, in
+#'   which case it is data. A quoted field is always text, and so always
+#'   counts as a name: `"2024"` and `"TRUE"` are column names where bare
+#'   `2024` and `TRUE` are data. Header values are
+#'   always text: they are never matched against `na` and never type-inferred.
 #' @param delimiter The field delimiter, as a single ASCII character.
 #'   Defaults to `","`. A newline, carriage return, form feed or double
 #'   quote is not allowed.
@@ -39,12 +43,34 @@
 #'   embedded NUL, is an error rather than something passed through to fail
 #'   later. A UTF-8 BOM is ignored.
 #' * A CR LF pair inside a quoted field is normalised to a single LF.
+#' * **`header = NA` looks at the first record only**, and at nothing else:
+#'   not the rest of the file, not `col_types`, and not `na`. It therefore
+#'   reaches a different verdict from `data.table::fread()` and DuckDB, which
+#'   compare the first record against the types of the rest, on three shapes
+#'   --- and the row count moves in both directions:
+#'   \itemize{
+#'     \item an unquoted header of numeric-looking names over numeric
+#'       columns, such as `id,2024,2025` above `1,5,6`, reads as data, so
+#'       the name record becomes a row and you get **one row more**;
+#'     \item a first record that is entirely missing values, `NA,NA,NA`
+#'       above `1,2,3`, reads as a header, costing **one row**;
+#'     \item a headerless first record of entirely quoted numbers,
+#'       `"1","2"` above `"3","4"`, reads as a header, costing **one row**.
+#'   }
+#'   Detection is a convenience for files whose shape you do not know. When
+#'   you do know, pass `header = TRUE` or `header = FALSE` and none of this
+#'   applies.
 #'
-#' @return A [data.frame] with one column per field. With `header = FALSE`,
-#'   or for an empty file, see the notes above for how names and dimensions
-#'   are determined. An empty file gives a data frame with zero rows and
+#' @return A [data.frame] with one column per field. Names come from the
+#'   first record when `header = TRUE`, or when `header = NA` and that record
+#'   is detected as names; otherwise they are `V1`, `V2`, ... An empty file,
+#'   or one of nothing but blank lines, gives a data frame with zero rows and
 #'   zero columns; a header-only file gives zero rows but one column per
 #'   header field.
+#'
+#' @seealso [sniff_csv()], to see the header verdict and inferred types
+#'   before committing to them --- and to pin them down so nothing is
+#'   inferred on the next run.
 #'
 #' @examples
 #' path <- tempfile(fileext = ".csv")
@@ -59,6 +85,9 @@
 #' # Force a column's type rather than inferring it
 #' read_csv(path, col_types = c("character", "character"))
 #'
+#' # Detect whether the first record is a header
+#' read_csv(path, header = NA)
+#'
 #' unlink(path)
 #' @export
 read_csv <- function(file,
@@ -69,8 +98,8 @@ read_csv <- function(file,
   if (!is.character(file) || length(file) != 1L || is.na(file)) {
     stop("`file` must be a single non-missing file path.", call. = FALSE)
   }
-  if (!is.logical(header) || length(header) != 1L || is.na(header)) {
-    stop("`header` must be TRUE or FALSE.", call. = FALSE)
+  if (!is.logical(header) || length(header) != 1L) {
+    stop("`header` must be TRUE, FALSE or NA.", call. = FALSE)
   }
   if (!is.character(delimiter) || length(delimiter) != 1L || is.na(delimiter)) {
     stop("`delimiter` must be a single character.", call. = FALSE)
