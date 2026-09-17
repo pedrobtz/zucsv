@@ -4,19 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-`zucsv` is an R package skeleton — the implementation has not started yet. What exists is the
-`usethis`-generated scaffolding (`DESCRIPTION` with placeholder Title/Description/Authors, empty
-`NAMESPACE`, `R/zucsv-package.R`, a stub `src/zucsv-package.c`, `tests/testthat.R` with no
-`tests/testthat/` directory yet) plus the full design document in [zucsv-design.md](zucsv-design.md) and the staged plan in
-[ROADMAP.md](ROADMAP.md).
+`zucsv` is implemented and at version 0.1.0, awaiting its first CRAN submission. `read_csv()` in
+[R/read_csv.R](R/read_csv.R) is a thin wrapper over the C reader in `src/read_csv.c` and
+`src/convert.c`, built on the vendored parser under `src/vendor/zsv/`; the suite lives in
+`tests/testthat/`. The full design document is [.agents/zucsv-design.md](.agents/zucsv-design.md)
+and the staged plan is [.agents/ROADMAP.md](.agents/ROADMAP.md). Both are build-ignored
+(`^\.agents$`), so they stay out of the tarball.
 
-**Read `zucsv-design.md` before writing any code.** It is the specification for v0.1 and covers the
-public API, type-inference rules, error messages, two-pass strategy, resource limits, the intended
-`src/` file layout, and the explicit non-goals. Treat its "Non-goals for v0.1" (§3) as binding: do
-not add `write_csv()`, connections, URL input, date parsing, column selection, `skip`/`n_max`,
+**Read `.agents/zucsv-design.md` before writing any code.** It is the specification for v0.1 and
+covers the public API, type-inference rules, error messages, two-pass strategy, resource limits,
+the `src/` file layout, and the explicit non-goals. Treat its "Non-goals for v0.1" (§3) as binding:
+do not add `write_csv()`, connections, URL input, date parsing, column selection, `skip`/`n_max`,
 ALTREP, or a parser-mode switch unless the user asks to revise the design. §29 is the decision log —
-check it before reopening a choice that looks arbitrary. `ROADMAP.md` says which stage the work is in and
-what its exit criteria are; finish a stage's criteria before starting the next.
+check it before reopening a choice that looks arbitrary. `.agents/ROADMAP.md` says which stage the
+work is in and what its exit criteria are; finish a stage's criteria before starting the next.
 
 ## Commands
 
@@ -80,6 +81,8 @@ namespace.
 
 ## Before the first release
 
-`DESCRIPTION` still contains the generated placeholder Title, Description, and Authors@R; README's
-"The goal of zucsv is to ..." and empty example are also placeholders. Fill these in rather than
-letting them ship.
+Roadmap stages 0–4 are done, and most of Stage 5 with them. What remains is the remote checks
+(`devtools::check_win_devel()`, `check_mac_release()`, R-hub), the submission itself, and the tag,
+GitHub release and CRAN badge that follow acceptance. `DESCRIPTION`, `README.md`, `NEWS.md` and
+`cran-comments.md` are all filled in — keep them in step with any API change that lands before
+submission, since they currently describe a package with one exported function.

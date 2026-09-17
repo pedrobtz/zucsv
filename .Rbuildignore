@@ -4,8 +4,7 @@
 ^docs$
 ^pkgdown$
 ^CLAUDE\.md$
-^zucsv-design\.md$
-^ROADMAP\.md$
+^\.agents$
 ^bench$
 ^cran-comments\.md$
 \.o$

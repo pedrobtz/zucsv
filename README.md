@@ -73,7 +73,7 @@ read_csv("data.txt", delimiter = ";")
 
 v0.1 reads local files and nothing else. There is no `write_csv()`, no URL or
 connection input, no compressed files, no date parsing, no column selection,
-no `skip`/`n_max`. See section 3 of [`zucsv-design.md`](zucsv-design.md) for
+no `skip`/`n_max`. See section 3 of [`zucsv-design.md`](https://github.com/pedrobtz/zucsv/blob/main/.agents/zucsv-design.md) for
 the full list and the reasoning, and section 27 for what is likely to come
 next.
 
