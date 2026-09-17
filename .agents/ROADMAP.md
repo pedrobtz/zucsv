@@ -118,7 +118,7 @@ parser actually does.
 **Work**
 
 - `.github/workflows/native-checks.yaml`, calling the reusable workflows in `pedrobtz/r-actions@v1`: `sanitizers` (ASan/UBSan under R-devel, with the leak detection macOS cannot do), `valgrind`, `lto`, `gctorture` and `rchk`. Fix everything they report, in vendored code too (as patches).
-- These replace the hand-rolled sanitizer job and the planned R-hub runs; `rchk` is informational by design, so read its artifact rather than trusting a green tick.
+- These replace the hand-rolled sanitizer job and the planned R-hub runs. `rchk` ran informational at first; it is now `fail-on-findings: true`, as the other zu-packages set it — the package is at zero, so the next finding is a regression rather than something to read in an artifact.
 - Stress tests behind `ZUCSV_STRESS=true`: millions of rows, 65,536 columns, multi-MB single cell, file at the record-size cap, repeated failing parses in a loop. Not `skip_on_cran()`: `testthat::test_local()` sets `NOT_CRAN`, so that would run them in the gctorture job, where a GC every 20 allocations makes them cost hours and prove nothing about protection.
 - Confirm the "file changed while reading" drift check by truncating a file between passes in a test that uses a small file and a `Sys.sleep`-free trick (e.g. a fixture whose second open is redirected); if that proves impractical, cover it by code review and leave a comment.
 - `bench/` (in `.Rbuildignore`): scripts comparing `utils::read.csv()`, `readr::read_csv()`, `data.table::fread()`, `zucsv::read_csv()` on numeric-heavy, character-heavy, narrow, and wide files (§22). Record results in `bench/RESULTS.md`. The bar is "no avoidable overhead", not "fastest".
