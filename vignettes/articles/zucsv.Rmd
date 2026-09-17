@@ -12,7 +12,7 @@ library(zucsv)
 
 `zucsv` reads delimited text files into ordinary R data frames, using the
 [`zsv`](https://github.com/liquidaty/zsv) C parser as its backend. This article
-covers the whole package — there is one exported function — and, more usefully,
+covers the whole package — there are two exported functions — and, more usefully,
 the handful of decisions that make it behave differently from the readers you
 already have.
 
@@ -30,8 +30,9 @@ R is not short of CSV readers. `zucsv` is not trying to replace `data.table` or
   whitespace-trimmed, and a value that will not convert to a type you asked for
   is an error rather than `NA`.
 - **No dependencies, no system library.** The parser is bundled and pinned.
-- **A small surface.** One function, five arguments, and a documented list of
-  what it deliberately does not do.
+- **A small surface.** One function to read a file and one to report how it
+  would be read, five arguments between them, and a documented list of what
+  `zucsv` deliberately does not do.
 
 If you want the fastest possible reader, use `data.table::fread()`. If you want
 tidyverse integration, use `readr`. `zucsv` optimises for predictability.
