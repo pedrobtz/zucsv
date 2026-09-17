@@ -1,20 +1,20 @@
-<svg width="80.6" height="20" viewBox="0 0 806 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="covr: 89.0%">
-  <title>covr: 89.0%</title>
-  <linearGradient id="XryKA" x2="0" y2="100%">
+<svg width="80.6" height="20" viewBox="0 0 806 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="covr: 90.2%">
+  <title>covr: 90.2%</title>
+  <linearGradient id="yCzIv" x2="0" y2="100%">
     <stop offset="0" stop-opacity=".1" stop-color="#EEE"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
-  <mask id="bsSmi"><rect width="806" height="200" rx="30" fill="#FFF"/></mask>
-  <g mask="url(#bsSmi)">
+  <mask id="coMMv"><rect width="806" height="200" rx="30" fill="#FFF"/></mask>
+  <g mask="url(#coMMv)">
     <rect width="336" height="200" fill="#555"/>
-    <rect width="470" height="200" fill="#DB1" x="336"/>
-    <rect width="806" height="200" fill="url(#XryKA)"/>
+    <rect width="470" height="200" fill="#3C1" x="336"/>
+    <rect width="806" height="200" fill="url(#yCzIv)"/>
   </g>
   <g aria-hidden="true" text-anchor="start" font-family="Verdana,DejaVu Sans,sans-serif" font-size="110">
     <text x="60" y="148" textLength="236" fill="#000" opacity="0.25">covr</text>
     <text x="50" y="138" textLength="236" fill="#fff">covr</text>
-    <text x="391" y="148" textLength="370" fill="#fff" opacity="0.25">89.0%</text>
-    <text x="381" y="138" textLength="370" fill="#000">89.0%</text>
+    <text x="391" y="148" textLength="370" fill="#000" opacity="0.25">90.2%</text>
+    <text x="381" y="138" textLength="370" fill="#fff">90.2%</text>
   </g>
   
 </svg>
