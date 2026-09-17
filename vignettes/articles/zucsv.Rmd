@@ -50,23 +50,6 @@ read_csv(file, header = TRUE, delimiter = ",", na = c("", "NA"), col_types = NUL
 | `na` | exact cell values to read as missing, or `NULL` for none |
 | `col_types` | force `logical`, `integer`, `double` or `character` |
 
-If you want to see those decisions before committing to them, `sniff_csv()`
-reports them without building any columns --- and its output feeds straight back
-in, which turns an inferred read into a strict one:
-
-```{r}
-s <- sniff_csv(path)
-str(s)
-
-# same data frame, but nothing is inferred this time
-identical(read_csv(path, header = s$header, col_types = s$col_types),
-          read_csv(path))
-```
-
-That second form is worth reaching for in a script that runs unattended: pin the
-schema once, and a file that changes shape becomes an error instead of a
-differently-typed column.
-
 `header = NA` is for files whose shape you do not know in advance. It reads the
 first record as names unless one of its unquoted fields is a number or a
 logical — so `id,name,score` is a header and `1,Ada,9.5` is data. It judges
@@ -88,6 +71,23 @@ df <- read_csv(path)
 df
 str(df)
 ```
+
+If you want to see those decisions before committing to them, `sniff_csv()`
+reports them without building any columns --- and its output feeds straight back
+in, which turns an inferred read into a strict one:
+
+```{r}
+s <- sniff_csv(path)
+str(s)
+
+# same data frame, but nothing is inferred this time
+identical(read_csv(path, header = s$header, col_types = s$col_types),
+          read_csv(path))
+```
+
+That second form is worth reaching for in a script that runs unattended: pin the
+schema once, and a file that changes shape becomes an error instead of a
+differently-typed column.
 
 Other delimiters need no separate function:
 
