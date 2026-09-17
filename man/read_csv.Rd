@@ -5,15 +5,17 @@
 \title{Read a CSV file}
 \usage{
 read_csv(
-  file,
+  file = NULL,
   header = TRUE,
   delimiter = ",",
   na = c("", "NA"),
-  col_types = NULL
+  col_types = NULL,
+  text = NULL
 )
 }
 \arguments{
-\item{file}{Path to a local file, as a single string. \code{~} is expanded.}
+\item{file}{Path to a local file, as a single string. \code{~} is expanded.
+Supply this or \code{text}, not both.}
 
 \item{header}{If \code{TRUE} (the default), the first record supplies the
 column names. If \code{FALSE}, every record is data and columns are named
@@ -38,6 +40,12 @@ vector of \code{"logical"}, \code{"integer"}, \code{"double"} or \code{"characte
 single value applies to every column; otherwise give one per column. A
 cell that cannot be converted to a forced type is an error, not a
 missing value.}
+
+\item{text}{The CSV itself, as a character vector, instead of a path. A
+vector of several elements is joined with newlines, so each element is
+one line --- \code{readLines()} output reads back unchanged. The string's
+declared encoding is honoured and converted to UTF-8, so a latin1 string
+reads correctly where a latin1 \emph{file} is still an error.}
 }
 \value{
 A \link{data.frame} with one column per field. Names come from the
@@ -89,6 +97,12 @@ applies.
 }
 }
 \examples{
+# A small CSV given directly, rather than from a file
+read_csv(text = "a,b\n1,2")
+
+# A character vector is one line per element
+read_csv(text = c("id,name", "1,Ada", "2,Linus"))
+
 path <- tempfile(fileext = ".csv")
 write.csv(
   data.frame(id = 1:3, name = c("Ada", "Linus", "Grace")),

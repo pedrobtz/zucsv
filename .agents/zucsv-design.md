@@ -52,7 +52,7 @@ The first release will intentionally not provide:
 - `read_tsv()` as a separate exported function;
 - URL input;
 - R connections;
-- raw-vector or string input;
+- raw-vector input;
 - compressed-file handling;
 - automatic decompression;
 - date, time, or datetime inference;
@@ -100,13 +100,27 @@ sniff_csv(
 
 ### `file`
 
-A length-one, non-missing character path to an existing local file.
+A length-one, non-missing character path to an existing local file, or `NULL` when the input is given as `text`. Exactly one of the two is supplied; both, or neither, is an error, checked in the wrapper and again in C.
 
-For v0.1, paths are the only supported input source. Restricting input to local files makes the implementation substantially simpler and permits an exact two-pass allocation strategy.
+Paths and in-memory strings are the two supported input sources. Both are seekable, which is what the exact two-pass allocation strategy needs; connections, URLs and compressed input are not, and remain out of scope (§3).
 
 The R wrapper applies `path.expand()` so `~/data.csv` works. The C side obtains the native path with `translateChar()` and opens it with `fopen(path, "rb")`. A directory or unreadable path is reported as `Cannot open CSV file: <path>`.
 
 The package requires R >= 4.2.0. From that version the native encoding on Windows is UTF-8, so non-ASCII paths open correctly without a `_wfopen` code path, and every supported platform agrees that strings handed to R are UTF-8.
+
+### `text`
+
+The CSV itself, as a character vector, instead of a path. Several elements are joined with newlines, so one element is one line and `readLines()` output reads back unchanged --- the same meaning `utils::read.csv(text=)` gives it. The join happens in the R wrapper; C receives a single string.
+
+The two passes are the same two passes. `zucsv_open()` is already called once per pass, so a string needs no reopen: the memory source is an `opts.read` callback over the R string's bytes, and rewinding is `pos = 0`. Nothing downstream --- the row loop, inference, both passes, the row/column error messages --- knows which source it is reading.
+
+Three things differ from a path, all of them simplifications:
+
+- **The encoding is known.** An R string declares its encoding, so the wrapper's bytes are translated to UTF-8 with `translateCharUTF8()` before parsing. A latin1-encoded string therefore reads correctly, where the same bytes in a *file* are an error (§13) --- a file carries no encoding to honour. This is not `encoding=`: it works because R already knows, not because `zucsv` guesses.
+- **No embedded NUL is possible.** R strings cannot contain one, so that error is unreachable for `text`.
+- **The input cannot change between passes.** The drift check of §9 stays, but for a string it can only fire on a `zucsv` bug, and says so rather than naming a file that does not exist.
+
+The bytes are borrowed, not copied: they live on R's `vmax` stack for the duration of the `.Call`, which outlives both passes.
 
 ### `header`
 
@@ -1067,7 +1081,7 @@ After v0.1 is stable, candidates are:
 - `write_csv()`;
 - `read_tsv()` as a convenience wrapper;
 - `parser = c("compat", "fast")`;
-- raw-vector and string input;
+- raw-vector input;
 - R connections;
 - `skip` and `n_max`;
 - column selection;
@@ -1120,3 +1134,4 @@ Decisions taken in the 2026-09-12 revision that were open or unstated in the fir
 | 20 | `header = NA` decides from the first record alone: a header unless one field is numeric or logical syntax (§4) | `fread`/duckdb's rule — compare the first record against the types inferred from the rest | Measured against both on six shapes, the two rules agree everywhere except a header row that itself holds a numeric-looking name over a numeric column (`1,score` over `5,10`), which zucsv reads as data. Buying that case costs the two-pass design its shape: the inferred types are final only at the end of pass 1, so the verdict would have to be deferred and the first record copied out of the parser's reused buffer, and `col_types` would need a rule for validating a record that is not yet known to be data. Deciding from the first record needs neither — it happens where the record is already live, and pass 2 is untouched. The default stays `TRUE`: detection is opt-in, so no existing result changes. |
 | 21 | A quoted field is text, and is skipped before either grammar, for detection (§4) | Judge the unquoted text, so `"2024"` and `2024` are the same evidence | Quoting is the one piece of authorial intent CSV carries, and `zucsv` already treats it as meaning something (decision 11: a quoted empty cell is not a blank line). A header of year or period names is an ordinary shape that the unquoted rule got wrong, and the flag is already on the cell, so the fix costs nothing. It is not free of consequence: a headerless file whose first record is entirely quoted numbers (`"1","2"`) now reads as a header, where `fread` and DuckDB read data. That shape needs a quote-everything writer *and* no header, which is rarer than a quoted header row, so the trade is taken deliberately and pinned by a test. |
 | 22 | `sniff_csv()` is an early return from `read_csv()`'s own pass 1 (§4) | A separate lighter-weight implementation that samples the head of the file, as `fread` and DuckDB sniffers do | The function's only value is that it reports what the reader *would* do; an independent implementation could disagree with it, and a sampled one would disagree on exactly the awkward files someone reaches for a sniffer to understand. Sharing the pass makes agreement structural rather than tested — the tests check it anyway, over twelve fixture shapes. The cost is that sniffing is not cheap: it reads the whole file. That is the honest price of an exact `nrow` and a `col_types` that is right about the last row as well as the first. |
+| 23 | In-memory input is `text =`, a separate argument from `file` (§4) | Overload `file` and detect a newline; readr's `I()` marker | Detection guesses, and guesses wrongly on the one input that matters --- a single-column CSV with no newline is indistinguishable from a path, and a path containing a newline is legal on every platform `zucsv` supports. `I()` needs the marker explained before the feature can be used. A named argument mirrors `utils::read.csv(text=)`, which is where an R user will look first, and it costs nothing: the two arguments are mutually exclusive, so there is no ambiguity to resolve at all. The two-pass design survives unchanged because a string rewinds more cheaply than a file reopens. |

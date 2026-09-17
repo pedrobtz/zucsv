@@ -4,10 +4,11 @@
 \alias{sniff_csv}
 \title{Report how a CSV file would be read}
 \usage{
-sniff_csv(file, delimiter = ",", na = c("", "NA"))
+sniff_csv(file = NULL, delimiter = ",", na = c("", "NA"), text = NULL)
 }
 \arguments{
-\item{file}{Path to a local file, as a single string. \code{~} is expanded.}
+\item{file}{Path to a local file, as a single string. \code{~} is expanded.
+Supply this or \code{text}, not both.}
 
 \item{delimiter}{The field delimiter, as a single ASCII character.
 Defaults to \code{","}. Not detected --- \code{zucsv} never guesses the delimiter.}
@@ -15,6 +16,9 @@ Defaults to \code{","}. Not detected --- \code{zucsv} never guesses the delimite
 \item{na}{Character vector of cell values to read as missing, or \code{NULL} to
 disable missing-value matching. Affects the inferred types, so pass here
 whatever you will pass to \code{\link[=read_csv]{read_csv()}}.}
+
+\item{text}{The CSV itself, as a character vector, instead of a path, with
+the same meaning as in \code{\link[=read_csv]{read_csv()}}.}
 }
 \value{
 A list with five elements:

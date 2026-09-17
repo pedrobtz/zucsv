@@ -231,11 +231,11 @@ test_that("the C entry point re-validates header independently", {
   # The wrapper's own messages are test-errors.R's job; what is only
   # checkable here is that native code does not trust them (design SS7).
   path <- csv_file("a,b\n1,2\n")
-  expect_error(.Call(zucsv:::C_read_csv, path, c(TRUE, TRUE), ",", "NA", NULL),
+  expect_error(.Call(zucsv:::C_read_csv, path, NULL, c(TRUE, TRUE), ",", "NA", NULL),
                "TRUE, FALSE or NA")
-  expect_error(.Call(zucsv:::C_read_csv, path, "auto", ",", "NA", NULL),
+  expect_error(.Call(zucsv:::C_read_csv, path, NULL, "auto", ",", "NA", NULL),
                "TRUE, FALSE or NA")
   # NA reaches C as the detect sentinel rather than being rejected
-  expect_identical(names(.Call(zucsv:::C_read_csv, path, NA, ",", "NA", NULL)),
+  expect_identical(names(.Call(zucsv:::C_read_csv, path, NULL, NA, ",", "NA", NULL)),
                    c("a", "b"))
 })
