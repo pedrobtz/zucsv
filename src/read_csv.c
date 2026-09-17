@@ -43,9 +43,24 @@ static void zucsv_check_io(zucsv_reader *r, const char *path) {
 static void zucsv_check_parse(enum zsv_status status, const char *path) {
   if (status == zsv_status_done)
     return;
-  if (status == zsv_status_memory)
-    Rf_error("Ran out of memory while parsing CSV file: %s", path);
-  Rf_error("CSV parser failed while reading file: %s", path);
+  if (status == zsv_status_memory) {
+    if (path)
+      Rf_error("Ran out of memory while parsing CSV file: %s", path);
+    Rf_error("Ran out of memory while parsing CSV text");
+  }
+  if (path)
+    Rf_error("CSV parser failed while reading file: %s", path);
+  Rf_error("CSV parser failed while reading text");
+}
+
+/* Pass 2 disagreeing with pass 1 means the file moved under us. Text cannot
+   move -- the bytes are R's, and they are protected for the whole call -- so
+   this is unreachable for text input and says so rather than naming a file
+   that does not exist. */
+static void zucsv_error_drift(const char *path) {
+  if (path)
+    Rf_error("CSV file changed while it was being read: %s", path);
+  Rf_error("Internal error: CSV text parsed differently on the second pass");
 }
 
 static void zucsv_reader_close(zucsv_reader *r) {
@@ -65,16 +80,42 @@ static void zucsv_cleanup(void *data, Rboolean jump) {
   zucsv_reader_close((zucsv_reader *)data);
 }
 
+/* opts.read for text input. zsv calls it exactly as it would fread(), so the
+   fread() convention is what it has to honour: n is the element size, size
+   the count, and the return value is elements delivered, not bytes. */
+static size_t zucsv_read_text(void *restrict buff, size_t n, size_t size, void *restrict ctx) {
+  zucsv_reader *r = (zucsv_reader *)ctx;
+  size_t want = n * size;
+  size_t left = r->len - r->pos;
+  size_t take = want < left ? want : left;
+  if (take) {
+    memcpy(buff, r->data + r->pos, take);
+    r->pos += take;
+  }
+  return n ? take / n : 0;
+}
+
+/* One source per call: r->data set means text, otherwise path. Both passes
+   call this, so for a file it is a fresh fopen and for text a rewind. */
 static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
   zucsv_reader_close(r);
 
-  r->stream = fopen(path, "rb");
-  if (!r->stream)
-    Rf_error("Cannot open CSV file: %s", path);
+  if (!path) {
+    r->pos = 0;
+  } else {
+    r->stream = fopen(path, "rb");
+    if (!r->stream)
+      Rf_error("Cannot open CSV file: %s", path);
+  }
 
   struct zsv_opts opts;
   memset(&opts, 0, sizeof(opts));
-  opts.stream = r->stream;
+  if (path) {
+    opts.stream = r->stream;
+  } else {
+    opts.read = zucsv_read_text;
+    opts.stream = r;
+  }
   opts.errprintf = zucsv_discard_diagnostics;
   opts.delimiter = delimiter;
   /* One more than the cap: zsv truncates silently at max_columns, so the
@@ -543,7 +584,7 @@ static SEXP zucsv_read_body(void *data) {
          here is that the file changed underneath us. Checking is what keeps
          the writes below in bounds (design SS9). */
       if ((R_xlen_t)n != ncol || row >= nrow)
-        Rf_error("CSV file changed while it was being read: %s", ctx->path);
+        zucsv_error_drift(ctx->path);
 
       for (R_xlen_t j = 0; j < ncol; j++) {
         struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
@@ -600,7 +641,7 @@ static SEXP zucsv_read_body(void *data) {
     zucsv_check_io(&ctx->reader, ctx->path);
 
     if (row != nrow)
-      Rf_error("CSV file changed while it was being read: %s", ctx->path);
+      zucsv_error_drift(ctx->path);
   }
 
   zucsv_reader_close(&ctx->reader);
@@ -628,12 +669,18 @@ static SEXP zucsv_read_body(void *data) {
 /* The shared entry: both exported routines validate the same way and run the
    same body, so sniff_csv() cannot describe a file differently from how
    read_csv() would read it. `want_header` is already a resolved tri-state. */
-static SEXP zucsv_run(SEXP file, int want_header, SEXP delimiter, SEXP na, SEXP col_types,
-                      int sniff) {
+static SEXP zucsv_run(SEXP file, SEXP text, int want_header, SEXP delimiter, SEXP na,
+                      SEXP col_types, int sniff) {
   /* Arguments are re-validated here: the R wrapper's checks exist for the
      message, not for native safety (design SS7). */
-  if (TYPEOF(file) != STRSXP || XLENGTH(file) != 1 || STRING_ELT(file, 0) == NA_STRING)
+  if ((file == R_NilValue) == (text == R_NilValue))
+    Rf_error("Supply exactly one of 'file' and 'text'");
+  if (file != R_NilValue &&
+      (TYPEOF(file) != STRSXP || XLENGTH(file) != 1 || STRING_ELT(file, 0) == NA_STRING))
     Rf_error("'file' must be a single non-missing file path");
+  if (text != R_NilValue &&
+      (TYPEOF(text) != STRSXP || XLENGTH(text) != 1 || STRING_ELT(text, 0) == NA_STRING))
+    Rf_error("'text' must be a single non-missing string");
   if (TYPEOF(delimiter) != STRSXP || XLENGTH(delimiter) != 1 || STRING_ELT(delimiter, 0) == NA_STRING)
     Rf_error("'delimiter' must be a single character");
   if (na != R_NilValue && TYPEOF(na) != STRSXP)
@@ -651,7 +698,20 @@ static SEXP zucsv_run(SEXP file, int want_header, SEXP delimiter, SEXP na, SEXP 
   zucsv_ctx ctx;
   ctx.reader.stream = NULL;
   ctx.reader.parser = NULL;
-  ctx.path = Rf_translateChar(STRING_ELT(file, 0));
+  ctx.reader.data = NULL;
+  ctx.reader.len = 0;
+  ctx.reader.pos = 0;
+  if (file != R_NilValue) {
+    ctx.path = Rf_translateChar(STRING_ELT(file, 0));
+  } else {
+    /* Translated once, to UTF-8, so the parser sees the same bytes a file
+       would have held -- and so a latin1- or native-encoded string is
+       converted rather than rejected. The result lives on R's vmax stack
+       until .Call returns, which outlives both passes. */
+    ctx.path = NULL;
+    ctx.reader.data = Rf_translateCharUTF8(STRING_ELT(text, 0));
+    ctx.reader.len = strlen(ctx.reader.data);
+  }
   ctx.want_header = want_header;
   ctx.delim = delim;
   ctx.sniff = sniff;
@@ -676,14 +736,14 @@ static SEXP zucsv_run(SEXP file, int want_header, SEXP delimiter, SEXP na, SEXP 
   return out;
 }
 
-SEXP C_read_csv(SEXP file, SEXP header, SEXP delimiter, SEXP na, SEXP col_types) {
+SEXP C_read_csv(SEXP file, SEXP text, SEXP header, SEXP delimiter, SEXP na, SEXP col_types) {
   if (TYPEOF(header) != LGLSXP || XLENGTH(header) != 1)
     Rf_error("'header' must be TRUE, FALSE or NA");
-  return zucsv_run(file, LOGICAL(header)[0], delimiter, na, col_types, 0);
+  return zucsv_run(file, text, LOGICAL(header)[0], delimiter, na, col_types, 0);
 }
 
 /* Always applies the first-record rule: reporting what `header = NA` would
    decide is the whole point of the function. */
-SEXP C_sniff_csv(SEXP file, SEXP delimiter, SEXP na) {
-  return zucsv_run(file, NA_LOGICAL, delimiter, na, R_NilValue, 1);
+SEXP C_sniff_csv(SEXP file, SEXP text, SEXP delimiter, SEXP na) {
+  return zucsv_run(file, text, NA_LOGICAL, delimiter, na, R_NilValue, 1);
 }

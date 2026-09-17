@@ -7,8 +7,8 @@
 #include "zucsv.h"
 
 static const R_CallMethodDef call_methods[] = {
-    {"C_read_csv", (DL_FUNC)&C_read_csv, 5},
-    {"C_sniff_csv", (DL_FUNC)&C_sniff_csv, 3},
+    {"C_read_csv", (DL_FUNC)&C_read_csv, 6},
+    {"C_sniff_csv", (DL_FUNC)&C_sniff_csv, 4},
     {NULL, NULL, 0}
 };
 

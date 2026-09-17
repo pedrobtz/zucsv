@@ -15,11 +15,14 @@
 #' it gives the same answer next month even if the data changes shape.
 #'
 #' @param file Path to a local file, as a single string. `~` is expanded.
+#'   Supply this or `text`, not both.
 #' @param delimiter The field delimiter, as a single ASCII character.
 #'   Defaults to `","`. Not detected --- `zucsv` never guesses the delimiter.
 #' @param na Character vector of cell values to read as missing, or `NULL` to
 #'   disable missing-value matching. Affects the inferred types, so pass here
 #'   whatever you will pass to [read_csv()].
+#' @param text The CSV itself, as a character vector, instead of a path, with
+#'   the same meaning as in [read_csv()].
 #'
 #' @return A list with five elements:
 #'   \describe{
@@ -59,10 +62,9 @@
 #'
 #' unlink(path)
 #' @export
-sniff_csv <- function(file, delimiter = ",", na = c("", "NA")) {
-  if (!is.character(file) || length(file) != 1L || is.na(file)) {
-    stop("`file` must be a single non-missing file path.", call. = FALSE)
-  }
+sniff_csv <- function(file = NULL, delimiter = ",", na = c("", "NA"),
+                      text = NULL) {
+  src <- zucsv_source(file, text)
   if (!is.character(delimiter) || length(delimiter) != 1L || is.na(delimiter)) {
     stop("`delimiter` must be a single character.", call. = FALSE)
   }
@@ -85,10 +87,5 @@ sniff_csv <- function(file, delimiter = ",", na = c("", "NA")) {
     }
   }
 
-  file <- path.expand(file)
-  if (dir.exists(file)) {
-    stop("`file` is a directory, not a CSV file: ", file, call. = FALSE)
-  }
-
-  .Call(C_sniff_csv, file, delimiter, na)
+  .Call(C_sniff_csv, src$file, src$text, delimiter, na)
 }

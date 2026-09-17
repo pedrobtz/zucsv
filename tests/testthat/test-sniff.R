@@ -122,8 +122,15 @@ test_that("argument shapes are rejected before the file is touched", {
 
 test_that("the C entry point re-validates independently of the wrapper", {
   f <- csv_file("a,b\n1,2\n")
-  expect_error(.Call(zucsv:::C_sniff_csv, f, "ab", "NA"), "single ASCII byte")
-  expect_error(.Call(zucsv:::C_sniff_csv, c(f, f), ",", "NA"),
+  expect_error(.Call(zucsv:::C_sniff_csv, f, NULL, "ab", "NA"), "single ASCII byte")
+  expect_error(.Call(zucsv:::C_sniff_csv, c(f, f), NULL, ",", "NA"),
                "single non-missing file path")
-  expect_error(.Call(zucsv:::C_sniff_csv, f, ",", 1), "character vector or NULL")
+  expect_error(.Call(zucsv:::C_sniff_csv, f, NULL, ",", 1), "character vector or NULL")
+  # the source arguments are exclusive in C too, not only in the wrapper
+  expect_error(.Call(zucsv:::C_sniff_csv, f, "a\n1\n", ",", "NA"),
+               "exactly one of 'file' and 'text'")
+  expect_error(.Call(zucsv:::C_sniff_csv, NULL, NULL, ",", "NA"),
+               "exactly one of 'file' and 'text'")
+  expect_error(.Call(zucsv:::C_sniff_csv, NULL, c("a", "b"), ",", "NA"),
+               "single non-missing string")
 })

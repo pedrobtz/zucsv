@@ -13,6 +13,11 @@ First release.
   takes them from `col_types`. A value that will not convert to a forced type
   is an error naming the row, column and value, never a silent `NA`.
 
+* `text` reads a CSV held in a character vector instead of a file, as
+  `utils::read.csv(text=)` does --- one element per line, so `readLines()`
+  output reads back unchanged. The string's declared encoding is honoured, so
+  a latin1 string reads correctly where a latin1 file is still an error.
+
 * `header`, `delimiter` and `na` control the header row, the field delimiter
   (any single ASCII byte) and which cell values read as missing. `header = NA`
   detects whether the first record is names or data, from that record alone.

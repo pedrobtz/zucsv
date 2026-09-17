@@ -77,6 +77,12 @@ typedef struct {
 typedef struct {
   FILE *stream;
   zsv_parser parser;
+  /* Text input: the caller's UTF-8 bytes, borrowed for the duration of the
+     .Call. NULL for a path, which is what tells the two apart. Rewinding
+     between passes is pos = 0, so a string needs no reopen (design SS9). */
+  const char *data;
+  size_t len;
+  size_t pos;
 } zucsv_reader;
 
 /* ------------------------------------------------------------------ *
@@ -159,7 +165,7 @@ int zucsv_accepts(zucsv_type type, const unsigned char *str, size_t len);
  * read_csv.c
  * ------------------------------------------------------------------ */
 
-SEXP C_read_csv(SEXP file, SEXP header, SEXP delimiter, SEXP na, SEXP col_types);
-SEXP C_sniff_csv(SEXP file, SEXP delimiter, SEXP na);
+SEXP C_read_csv(SEXP file, SEXP text, SEXP header, SEXP delimiter, SEXP na, SEXP col_types);
+SEXP C_sniff_csv(SEXP file, SEXP text, SEXP delimiter, SEXP na);
 
 #endif /* ZUCSV_H */

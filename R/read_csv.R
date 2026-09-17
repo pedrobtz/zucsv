@@ -6,6 +6,7 @@
 #' final length.
 #'
 #' @param file Path to a local file, as a single string. `~` is expanded.
+#'   Supply this or `text`, not both.
 #' @param header If `TRUE` (the default), the first record supplies the
 #'   column names. If `FALSE`, every record is data and columns are named
 #'   `V1`, `V2`, ... If `NA`, detect: the first record is treated as names
@@ -21,6 +22,11 @@
 #'   to disable missing-value matching. Matching happens after unquoting and
 #'   is exact: no whitespace is trimmed, so `NA` and `"NA"` are both missing
 #'   under the default but `" NA"` is not.
+#' @param text The CSV itself, as a character vector, instead of a path. A
+#'   vector of several elements is joined with newlines, so each element is
+#'   one line --- `readLines()` output reads back unchanged. The string's
+#'   declared encoding is honoured and converted to UTF-8, so a latin1 string
+#'   reads correctly where a latin1 *file* is still an error.
 #' @param col_types `NULL` to infer each column's type, or a character
 #'   vector of `"logical"`, `"integer"`, `"double"` or `"character"`. A
 #'   single value applies to every column; otherwise give one per column. A
@@ -73,6 +79,12 @@
 #'   inferred on the next run.
 #'
 #' @examples
+#' # A small CSV given directly, rather than from a file
+#' read_csv(text = "a,b\n1,2")
+#'
+#' # A character vector is one line per element
+#' read_csv(text = c("id,name", "1,Ada", "2,Linus"))
+#'
 #' path <- tempfile(fileext = ".csv")
 #' write.csv(
 #'   data.frame(id = 1:3, name = c("Ada", "Linus", "Grace")),
@@ -90,14 +102,13 @@
 #'
 #' unlink(path)
 #' @export
-read_csv <- function(file,
+read_csv <- function(file = NULL,
                      header = TRUE,
                      delimiter = ",",
                      na = c("", "NA"),
-                     col_types = NULL) {
-  if (!is.character(file) || length(file) != 1L || is.na(file)) {
-    stop("`file` must be a single non-missing file path.", call. = FALSE)
-  }
+                     col_types = NULL,
+                     text = NULL) {
+  src <- zucsv_source(file, text)
   if (!is.logical(header) || length(header) != 1L) {
     stop("`header` must be TRUE, FALSE or NA.", call. = FALSE)
   }
@@ -138,12 +149,5 @@ read_csv <- function(file,
     }
   }
 
-  file <- path.expand(file)
-  # fopen() succeeds on a directory on most Unixes, so catch it here where
-  # the message can say what is actually wrong.
-  if (dir.exists(file)) {
-    stop("`file` is a directory, not a CSV file: ", file, call. = FALSE)
-  }
-
-  .Call(C_read_csv, file, header, delimiter, na, col_types)
+  .Call(C_read_csv, src$file, src$text, header, delimiter, na, col_types)
 }
