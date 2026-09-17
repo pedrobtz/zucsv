@@ -18,8 +18,13 @@ name: native-checks
 permissions: read-all
 
 jobs:
+  # asan: true adds the AddressSanitizer job in the R-hub containers, where R
+  # is itself an ASan build. That is the leak detection macOS cannot do, and
+  # SS16's cleanup discipline is what most needs it.
   sanitizers:
     uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
+    with:
+      asan: true
 
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1

@@ -1,5 +1,17 @@
-# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
-# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+# R CMD check, from the reusable workflow in pedrobtz/r-actions: the GitHub
+# runners, plus the R-hub containers built to match CRAN's r-devel Linux
+# flavors.
+#
+# The containers are the reason for the switch. zucsv compiles a bundled C
+# parser, and upstream code is written against the compilers upstream tests
+# on -- so the diagnostics that arrive first are someone else's. CRAN builds
+# those flavors with clang 23 at -std=gnu23 and with GCC 16, both -pedantic;
+# ubuntu-latest has neither, and a warning only those compilers emit stays
+# invisible until CRAN's incoming pretest reports it.
+#
+# The default runners matrix has no R-devel Linux row: the containers are
+# R-devel on Linux already, on the compilers CRAN actually uses.
+
 on:
   push:
     branches: [main, master]
@@ -11,40 +23,4 @@ permissions: read-all
 
 jobs:
   R-CMD-check:
-    runs-on: ${{ matrix.config.os }}
-
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
-
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
-          - {os: ubuntu-latest,   r: 'release'}
-          - {os: ubuntu-latest,   r: 'oldrel-1'}
-
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      R_KEEP_PKG_SOURCE: yes
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: r-lib/actions/setup-pandoc@v2
-
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: ${{ matrix.config.r }}
-          http-user-agent: ${{ matrix.config.http-user-agent }}
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          extra-packages: any::rcmdcheck
-          needs: check
-
-      - uses: r-lib/actions/check-r-package@v2
-        with:
-          upload-snapshots: true
-          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+    uses: pedrobtz/r-actions/.github/workflows/r-cmd-check.yml@v1
