@@ -73,8 +73,12 @@ final length.</p>
 <dt id="arg-header">header<a class="anchor" aria-label="anchor" href="#arg-header"></a></dt>
 <dd><p>If <code>TRUE</code> (the default), the first record supplies the
 column names. If <code>FALSE</code>, every record is data and columns are named
-<code>V1</code>, <code>V2</code>, ... Header values are always text: they are never matched
-against <code>na</code> and never type-inferred.</p></dd>
+<code>V1</code>, <code>V2</code>, ... If <code>NA</code>, detect: the first record is treated as names
+unless one of its unquoted fields looks like a number or a logical, in
+which case it is data. A quoted field is always text, and so always
+counts as a name: <code>"2024"</code> and <code>"TRUE"</code> are column names where bare
+<code>2024</code> and <code>TRUE</code> are data. Header values are
+always text: they are never matched against <code>na</code> and never type-inferred.</p></dd>
 
 
 <dt id="arg-delimiter">delimiter<a class="anchor" aria-label="anchor" href="#arg-delimiter"></a></dt>
@@ -100,9 +104,10 @@ missing value.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a> with one column per field. With <code>header = FALSE</code>,
-or for an empty file, see the notes above for how names and dimensions
-are determined. An empty file gives a data frame with zero rows and
+    <p>A <a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a> with one column per field. Names come from the
+first record when <code>header = TRUE</code>, or when <code>header = NA</code> and that record
+is detected as names; otherwise they are <code>V1</code>, <code>V2</code>, ... An empty file,
+or one of nothing but blank lines, gives a data frame with zero rows and
 zero columns; a header-only file gives zero rows but one column per
 header field.</p>
     </div>
@@ -121,7 +126,27 @@ and empty strings. No name repair is performed.</p></li>
 embedded NUL, is an error rather than something passed through to fail
 later. A UTF-8 BOM is ignored.</p></li>
 <li><p>A CR LF pair inside a quoted field is normalised to a single LF.</p></li>
+<li><p><strong><code>header = NA</code> looks at the first record only</strong>, and at nothing else:
+not the rest of the file, not <code>col_types</code>, and not <code>na</code>. It therefore
+reaches a different verdict from <code><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">data.table::fread()</a></code> and DuckDB, which
+compare the first record against the types of the rest, on three shapes
+— and the row count moves in both directions:</p><ul><li><p>an unquoted header of numeric-looking names over numeric
+columns, such as <code>id,2024,2025</code> above <code>1,5,6</code>, reads as data, so
+the name record becomes a row and you get <strong>one row more</strong>;</p></li>
+<li><p>a first record that is entirely missing values, <code>NA,NA,NA</code>
+above <code>1,2,3</code>, reads as a header, costing <strong>one row</strong>;</p></li>
+<li><p>a headerless first record of entirely quoted numbers,
+<code>"1","2"</code> above <code>"3","4"</code>, reads as a header, costing <strong>one row</strong>.</p></li>
+</ul><p>Detection is a convenience for files whose shape you do not know. When
+you do know, pass <code>header = TRUE</code> or <code>header = FALSE</code> and none of this
+applies.</p></li>
 </ul></div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p><code><a href="sniff_csv.html">sniff_csv()</a></code>, to see the header verdict and inferred types
+before committing to them — and to pin them down so nothing is
+inferred on the next run.</p></div>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
@@ -140,6 +165,13 @@ later. A UTF-8 BOM is ignored.</p></li>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Force a column's type rather than inferring it</span></span></span>
 <span class="r-in"><span><span class="fu">read_csv</span><span class="op">(</span><span class="va">path</span>, col_types <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"character"</span>, <span class="st">"character"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   id  name</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1  1   Ada</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2  2 Linus</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3  3 Grace</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Detect whether the first record is a header</span></span></span>
+<span class="r-in"><span><span class="fu">read_csv</span><span class="op">(</span><span class="va">path</span>, header <span class="op">=</span> <span class="cn">NA</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   id  name</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1  1   Ada</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2  2 Linus</span>

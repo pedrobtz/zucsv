@@ -70,8 +70,8 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/pedrobtz/zucsv" class="external-link">zucsv</a></span><span class="op">)</span></span></code></pre></div>
 <p><code>zucsv</code> reads delimited text files into ordinary R data
 frames, using the <a href="https://github.com/liquidaty/zsv" class="external-link"><code>zsv</code></a> C parser as
-its backend. This article covers the whole package — there is one
-exported function — and, more usefully, the handful of decisions that
+its backend. This article covers the whole package — there are two
+exported functions — and, more usefully, the handful of decisions that
 make it behave differently from the readers you already have.</p>
 <div class="section level2">
 <h2 id="why-another-csv-package">Why another CSV package<a class="anchor" aria-label="anchor" href="#why-another-csv-package"></a>
@@ -97,8 +97,10 @@ convert to a type you asked for is an error rather than
 <strong>No dependencies, no system library.</strong> The parser is
 bundled and pinned.</li>
 <li>
-<strong>A small surface.</strong> One function, five arguments, and
-a documented list of what it deliberately does not do.</li>
+<strong>A small surface.</strong> One function to read a file and
+one to report how it would be read, five arguments between them, and a
+documented list of what <code>zucsv</code> deliberately does not
+do.</li>
 </ul>
 <p>If you want the fastest possible reader, use
 <code><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">data.table::fread()</a></code>. If you want tidyverse integration, use
@@ -110,6 +112,10 @@ a documented list of what it deliberately does not do.</li>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">file</span>, header <span class="op">=</span> <span class="cn">TRUE</span>, delimiter <span class="op">=</span> <span class="st">","</span>, na <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">""</span>, <span class="st">"NA"</span><span class="op">)</span>, col_types <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
 <table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
 <thead><tr class="header">
 <th>argument</th>
 <th>what it does</th>
@@ -121,9 +127,10 @@ a documented list of what it deliberately does not do.</li>
 </tr>
 <tr class="even">
 <td><code>header</code></td>
-<td>first record supplies names, or generate
-<code>V1</code>…<code>Vn</code>
-</td>
+<td>
+<code>TRUE</code> first record supplies names, <code>FALSE</code>
+generate <code>V1</code>…<code>Vn</code>, <code>NA</code> detect
+which</td>
 </tr>
 <tr class="odd">
 <td><code>delimiter</code></td>
@@ -142,6 +149,14 @@ none</td>
 </tr>
 </tbody>
 </table>
+<p><code>header = NA</code> is for files whose shape you do not know in
+advance. It reads the first record as names unless one of its unquoted
+fields is a number or a logical — so <code>id,name,score</code> is a
+header and <code>1,Ada,9.5</code> is data. It judges that one record and
+nothing else, which is cheap and predictable but less informed than the
+equivalent in <code><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">data.table::fread()</a></code> or DuckDB;
+<code><a href="../reference/read_csv.html">?read_csv</a></code> lists the three shapes where the verdicts differ.
+When you know the answer, say so.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -163,8 +178,29 @@ none</td>
 <span><span class="co">#&gt;  $ name  : chr  "Ada" "Linus" "Grace"</span></span>
 <span><span class="co">#&gt;  $ score : num  9.5 8 NA</span></span>
 <span><span class="co">#&gt;  $ active: logi  TRUE FALSE TRUE</span></span></code></pre></div>
-<p>Other delimiters need no separate function:</p>
+<p>If you want to see those decisions before committing to them,
+<code><a href="../reference/sniff_csv.html">sniff_csv()</a></code> reports them without building any columns — and
+its output feeds straight back in, which turns an inferred read into a
+strict one:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sniff_csv.html">sniff_csv</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span></span>
+<span><span class="co">#&gt; List of 5</span></span>
+<span><span class="co">#&gt;  $ header   : logi TRUE</span></span>
+<span><span class="co">#&gt;  $ ncol     : int 4</span></span>
+<span><span class="co">#&gt;  $ nrow     : int 3</span></span>
+<span><span class="co">#&gt;  $ col_names: chr [1:4] "id" "name" "score" "active"</span></span>
+<span><span class="co">#&gt;  $ col_types: chr [1:4] "integer" "character" "double" "logical"</span></span>
+<span></span>
+<span><span class="co"># same data frame, but nothing is inferred this time</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span>, header <span class="op">=</span> <span class="va">s</span><span class="op">$</span><span class="va">header</span>, col_types <span class="op">=</span> <span class="va">s</span><span class="op">$</span><span class="va">col_types</span><span class="op">)</span>,</span>
+<span>          <span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
+<p>That second form is worth reaching for in a script that runs
+unattended: pin the schema once, and a file that changes shape becomes
+an error instead of a differently-typed column.</p>
+<p>Other delimiters need no separate function:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tsv</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".tsv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a\tb"</span>, <span class="st">"1\t2"</span><span class="op">)</span>, <span class="va">tsv</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">tsv</span>, delimiter <span class="op">=</span> <span class="st">"\t"</span><span class="op">)</span></span>
@@ -179,7 +215,7 @@ none</td>
 <strong>every</strong> value in the column rather than a sample. A
 column is only narrower than <code>character</code> if every non-missing
 value in the whole file fits.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">types</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lgl,int,dbl,chr"</span>, <span class="st">"TRUE,1,1.5,x"</span>, <span class="st">"FALSE,2,2.5,y"</span><span class="op">)</span>, <span class="va">types</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">types</span><span class="op">)</span>, <span class="va">typeof</span>, <span class="st">""</span><span class="op">)</span></span>
@@ -189,7 +225,7 @@ value in the whole file fits.</p>
 <code>FALSE</code>, <code>true</code>, <code>false</code>.
 <code>T</code>, <code>yes</code> and <code>1</code> are not, because in
 real data they are far more often something else.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">spellings</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a,b,c"</span>, <span class="st">"T,yes,TRUE"</span>, <span class="st">"F,no,FALSE"</span><span class="op">)</span>, <span class="va">spellings</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">spellings</span><span class="op">)</span>, <span class="va">typeof</span>, <span class="st">""</span><span class="op">)</span></span>
@@ -201,7 +237,7 @@ real data they are far more often something else.</p>
 <p><code>col_types</code> takes one value for every column, or one value
 for all of them. A cell that will not convert is an error naming the
 row, the column and the value:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">path</span>, col_types <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"integer"</span>, <span class="st">"character"</span>, <span class="st">"double"</span>, <span class="st">"logical"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   id  name score active</span></span>
 <span><span class="co">#&gt; 1  1   Ada   9.5   TRUE</span></span>
@@ -222,7 +258,7 @@ into <code>NA</code> here would be losing data quietly.</p>
 knowing before you meet them in a 200-megabyte file.</p>
 <p><strong>Blank lines are skipped, everywhere.</strong> Leading,
 trailing or in the middle — they are not rows.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">blanks</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a,b"</span>, <span class="st">"1,2"</span>, <span class="st">""</span>, <span class="st">"3,4"</span>, <span class="st">""</span><span class="op">)</span>, <span class="va">blanks</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">blanks</span><span class="op">)</span><span class="op">)</span></span>
@@ -233,7 +269,7 @@ one-column file, write an intentional empty cell as <code>""</code> — a
 bare empty line is skipped.</p>
 <p><strong>Nothing is trimmed.</strong> <code>" 42"</code> is text,
 because it has a space in it.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">padded</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a"</span>, <span class="st">" 42"</span>, <span class="st">"1"</span><span class="op">)</span>, <span class="va">padded</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">padded</span><span class="op">)</span><span class="op">$</span><span class="va">a</span></span>
@@ -243,7 +279,7 @@ because it has a space in it.</p>
 codes lose their leading zero in every reader. Use
 <code>col_types</code> when the column is an identifier rather than a
 number.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">codes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"zip"</span>, <span class="st">"0600000"</span>, <span class="st">"1000001"</span><span class="op">)</span>, <span class="va">codes</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">codes</span><span class="op">)</span><span class="op">$</span><span class="va">zip</span></span>
@@ -252,7 +288,7 @@ number.</p>
 <span><span class="co">#&gt; [1] "0600000" "1000001"</span></span></code></pre></div>
 <p><strong>Column names are kept exactly</strong>, duplicates and empty
 strings included. No name repair.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dupes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a,a,"</span>, <span class="st">"1,2,3"</span><span class="op">)</span>, <span class="va">dupes</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">dupes</span><span class="op">)</span><span class="op">)</span></span>
@@ -264,7 +300,7 @@ strings included. No name repair.</p>
 <p>Structural problems name the record and the column. Records are
 numbered as they appear, header included, so the numbers match what you
 see in an editor.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ragged</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a,b"</span>, <span class="st">"1,2"</span>, <span class="st">"3,4,5"</span><span class="op">)</span>, <span class="va">ragged</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">ragged</span><span class="op">)</span></span>
@@ -272,7 +308,7 @@ see in an editor.</p>
 <span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> CSV row 3 has 3 fields; expected 2</span></span></code></pre></div>
 <p>Text that cannot be carried into an R string is an error too, rather
 than something that fails later:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">bad</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/connections.html" class="external-link">file</a></span><span class="op">(</span><span class="va">bad</span>, <span class="st">"wb"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/readBin.html" class="external-link">writeBin</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rawConversion.html" class="external-link">charToRaw</a></span><span class="op">(</span><span class="st">"a,b\n"</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/raw.html" class="external-link">as.raw</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0xFF</span>, <span class="fl">0xFE</span><span class="op">)</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/rawConversion.html" class="external-link">charToRaw</a></span><span class="op">(</span><span class="st">",2\n"</span><span class="op">)</span><span class="op">)</span>, <span class="va">con</span><span class="op">)</span></span>
@@ -290,7 +326,7 @@ same input.</p>
 <p><code>na</code> is a set of exact cell values, matched after
 unquoting. Quoted and unquoted forms are therefore the same thing, and
 nothing is trimmed first.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">miss</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".csv"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a,b,c"</span>, <span class="st">'NA,"NA", NA'</span><span class="op">)</span>, <span class="va">miss</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">miss</span><span class="op">)</span></span>

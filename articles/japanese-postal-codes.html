@@ -149,9 +149,31 @@ and to one row per record:</p>
 <span><span class="co">#&gt; "character" "character" "character"   "integer"   "integer"   "integer" </span></span>
 <span><span class="co">#&gt;         V13         V14         V15 </span></span>
 <span><span class="co">#&gt;   "integer"   "integer"   "integer"</span></span></code></pre></div>
+<p>Every call so far has passed <code>header = FALSE</code>, because
+this file has no header and <code>zucsv</code> will otherwise take its
+first record for one. You do not have to know that in advance —
+<code>header = NA</code> works it out:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">detected</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">utf8</span>, header <span class="op">=</span> <span class="cn">NA</span><span class="op">)</span></span>
+<span><span class="va">fr</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">fread</a></span><span class="op">(</span><span class="va">utf8</span>, showProgress <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">rbind</a></span><span class="op">(</span>zucsv <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">detected</span><span class="op">)</span>, first_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">detected</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span>,</span>
+<span>      fread <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">fr</span><span class="op">)</span>,       first_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fr</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       rows     first_name</span></span>
+<span><span class="co">#&gt; zucsv "124498" "V1"      </span></span>
+<span><span class="co">#&gt; fread "124498" "V1"</span></span></code></pre></div>
+<p>Record 1 begins <code>01101</code>, which is integer syntax, and one
+numeric-looking field is enough to settle that the record is data.
+<code>fread</code> reaches the same verdict by a different route: it
+compares the first record against the types inferred from the rest of
+the file, while <code>zucsv</code> looks only at the record itself.
+Cheaper, and on this file identical — but the two rules are not the same
+rule, and <code><a href="../reference/read_csv.html">?read_csv</a></code> lists the three shapes where they part
+company. Passing <code>header</code> explicitly is still better when you
+know the answer.</p>
 <p>Kanji comes back marked as UTF-8, with the character counts you would
 expect:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="va">new</span><span class="op">[[</span><span class="fl">7</span><span class="op">]</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>value <span class="op">=</span> <span class="va">x</span>, encoding <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Encoding.html" class="external-link">Encoding</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, nchar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nchar</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, bytes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nchar</a></span><span class="op">(</span><span class="va">x</span>, <span class="st">"bytes"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    value encoding    nchar    bytes </span></span>
@@ -163,7 +185,7 @@ expect:</p>
 <p>Column 3 is the seven-digit postal code, and it is the reason this
 file is a good teacher. Hokkaido’s first entry is
 <code>0600000</code>:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">as_text</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">utf8</span>, header <span class="op">=</span> <span class="cn">FALSE</span>, col_types <span class="op">=</span> <span class="st">"character"</span><span class="op">)</span></span>
 <span><span class="va">as_text</span><span class="op">[[</span><span class="fl">3</span><span class="op">]</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span><span class="co">#&gt; [1] "0600000"</span></span>
@@ -180,7 +202,7 @@ a number destroys it. <code>zucsv</code> infers <code>integer</code>
 here, and so do <code><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">read.csv()</a></code> and <code>fread</code> — this is
 not a difference between readers, it is what “looks like a number”
 means. The fix is to say so:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fixed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/read_csv.html">read_csv</a></span><span class="op">(</span><span class="va">utf8</span>, header <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>                  col_types <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"integer"</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="st">"character"</span>, <span class="fl">8</span><span class="op">)</span>,</span>
 <span>                                <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="st">"integer"</span>, <span class="fl">6</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
@@ -196,7 +218,7 @@ exactly the case it exists for.</p>
 </h2>
 <p>Column 2 is the old five-digit code, space-padded to five
 characters:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">as_text</span><span class="op">[[</span><span class="fl">2</span><span class="op">]</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span><span class="co">#&gt; [1] "060  "</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">new</span><span class="op">[[</span><span class="fl">2</span><span class="op">]</span><span class="op">]</span><span class="op">)</span></span>
@@ -213,7 +235,7 @@ not to silently discard bytes that were in the file.</p>
 </h2>
 <p>The legacy file splits long town names across consecutive records
 that share a postal code; the modern one keeps each record whole.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>old_rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">old</span><span class="op">)</span>, new_rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">new</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; old_rows new_rows </span></span>
 <span><span class="co">#&gt;   124812   124498</span></span>

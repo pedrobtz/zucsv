@@ -3,7 +3,7 @@
 Read CSV files into base R data frames, using the
 [`zsv`](https://github.com/liquidaty/zsv) C parser as the backend.
 
-`zucsv` is deliberately small: one exported function, no R package
+`zucsv` is deliberately small: two exported functions, no R package
 dependencies, and a bundled copy of the parser so there is nothing to
 install and nothing to configure. The division of labour is the whole
 design — `zsv` decides where rows and fields begin and end, `zucsv`

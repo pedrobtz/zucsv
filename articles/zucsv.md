@@ -7,8 +7,8 @@ library(zucsv)
 
 `zucsv` reads delimited text files into ordinary R data frames, using
 the [`zsv`](https://github.com/liquidaty/zsv) C parser as its backend.
-This article covers the whole package — there is one exported function —
-and, more usefully, the handful of decisions that make it behave
+This article covers the whole package — there are two exported functions
+— and, more usefully, the handful of decisions that make it behave
 differently from the readers you already have.
 
 ## Why another CSV package
@@ -28,8 +28,9 @@ priorities:
   asked for is an error rather than `NA`.
 - **No dependencies, no system library.** The parser is bundled and
   pinned.
-- **A small surface.** One function, five arguments, and a documented
-  list of what it deliberately does not do.
+- **A small surface.** One function to read a file and one to report how
+  it would be read, five arguments between them, and a documented list
+  of what `zucsv` deliberately does not do.
 
 If you want the fastest possible reader, use
 [`data.table::fread()`](https://rdrr.io/pkg/data.table/man/fread.html).
@@ -43,13 +44,24 @@ predictability.
 read_csv(file, header = TRUE, delimiter = ",", na = c("", "NA"), col_types = NULL)
 ```
 
-| argument    | what it does                                             |
-|-------------|----------------------------------------------------------|
-| `file`      | path to a local file; `~` is expanded                    |
-| `header`    | first record supplies names, or generate `V1`…`Vn`       |
-| `delimiter` | any single ASCII byte — comma, tab, semicolon, pipe      |
-| `na`        | exact cell values to read as missing, or `NULL` for none |
-| `col_types` | force `logical`, `integer`, `double` or `character`      |
+| argument | what it does |
+|----|----|
+| `file` | path to a local file; `~` is expanded |
+| `header` | `TRUE` first record supplies names, `FALSE` generate `V1`…`Vn`, `NA` detect which |
+| `delimiter` | any single ASCII byte — comma, tab, semicolon, pipe |
+| `na` | exact cell values to read as missing, or `NULL` for none |
+| `col_types` | force `logical`, `integer`, `double` or `character` |
+
+`header = NA` is for files whose shape you do not know in advance. It
+reads the first record as names unless one of its unquoted fields is a
+number or a logical — so `id,name,score` is a header and `1,Ada,9.5` is
+data. It judges that one record and nothing else, which is cheap and
+predictable but less informed than the equivalent in
+[`data.table::fread()`](https://rdrr.io/pkg/data.table/man/fread.html)
+or DuckDB;
+[`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
+lists the three shapes where the verdicts differ. When you know the
+answer, say so.
 
 ``` r
 
@@ -74,6 +86,32 @@ str(df)
 #>  $ score : num  9.5 8 NA
 #>  $ active: logi  TRUE FALSE TRUE
 ```
+
+If you want to see those decisions before committing to them,
+[`sniff_csv()`](https://pedrobtz.github.io/zucsv/reference/sniff_csv.md)
+reports them without building any columns — and its output feeds
+straight back in, which turns an inferred read into a strict one:
+
+``` r
+
+s <- sniff_csv(path)
+str(s)
+#> List of 5
+#>  $ header   : logi TRUE
+#>  $ ncol     : int 4
+#>  $ nrow     : int 3
+#>  $ col_names: chr [1:4] "id" "name" "score" "active"
+#>  $ col_types: chr [1:4] "integer" "character" "double" "logical"
+
+# same data frame, but nothing is inferred this time
+identical(read_csv(path, header = s$header, col_types = s$col_types),
+          read_csv(path))
+#> [1] TRUE
+```
+
+That second form is worth reaching for in a script that runs unattended:
+pin the schema once, and a file that changes shape becomes an error
+instead of a differently-typed column.
 
 Other delimiters need no separate function:
 

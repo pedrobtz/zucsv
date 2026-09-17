@@ -95,6 +95,32 @@ vapply(new, function(x) class(x)[1], "")
 #>   "integer"   "integer"   "integer"
 ```
 
+Every call so far has passed `header = FALSE`, because this file has no
+header and `zucsv` will otherwise take its first record for one. You do
+not have to know that in advance — `header = NA` works it out:
+
+``` r
+
+detected <- read_csv(utf8, header = NA)
+fr <- data.table::fread(utf8, showProgress = FALSE)
+
+rbind(zucsv = c(rows = nrow(detected), first_name = names(detected)[1]),
+      fread = c(rows = nrow(fr),       first_name = names(fr)[1]))
+#>       rows     first_name
+#> zucsv "124498" "V1"      
+#> fread "124498" "V1"
+```
+
+Record 1 begins `01101`, which is integer syntax, and one
+numeric-looking field is enough to settle that the record is data.
+`fread` reaches the same verdict by a different route: it compares the
+first record against the types inferred from the rest of the file, while
+`zucsv` looks only at the record itself. Cheaper, and on this file
+identical — but the two rules are not the same rule, and
+[`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
+lists the three shapes where they part company. Passing `header`
+explicitly is still better when you know the answer.
+
 Kanji comes back marked as UTF-8, with the character counts you would
 expect:
 

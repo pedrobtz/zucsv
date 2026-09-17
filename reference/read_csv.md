@@ -27,8 +27,12 @@ read_csv(
 
   If `TRUE` (the default), the first record supplies the column names.
   If `FALSE`, every record is data and columns are named `V1`, `V2`, ...
-  Header values are always text: they are never matched against `na` and
-  never type-inferred.
+  If `NA`, detect: the first record is treated as names unless one of
+  its unquoted fields looks like a number or a logical, in which case it
+  is data. A quoted field is always text, and so always counts as a
+  name: `"2024"` and `"TRUE"` are column names where bare `2024` and
+  `TRUE` are data. Header values are always text: they are never matched
+  against `na` and never type-inferred.
 
 - delimiter:
 
@@ -52,10 +56,11 @@ read_csv(
 ## Value
 
 A [data.frame](https://rdrr.io/r/base/data.frame.html) with one column
-per field. With `header = FALSE`, or for an empty file, see the notes
-above for how names and dimensions are determined. An empty file gives a
-data frame with zero rows and zero columns; a header-only file gives
-zero rows but one column per header field.
+per field. Names come from the first record when `header = TRUE`, or
+when `header = NA` and that record is detected as names; otherwise they
+are `V1`, `V2`, ... An empty file, or one of nothing but blank lines,
+gives a data frame with zero rows and zero columns; a header-only file
+gives zero rows but one column per header field.
 
 ## Details
 
@@ -79,6 +84,33 @@ Some behavior worth knowing before you rely on it:
 
 - A CR LF pair inside a quoted field is normalised to a single LF.
 
+- **`header = NA` looks at the first record only**, and at nothing else:
+  not the rest of the file, not `col_types`, and not `na`. It therefore
+  reaches a different verdict from
+  [`data.table::fread()`](https://rdrr.io/pkg/data.table/man/fread.html)
+  and DuckDB, which compare the first record against the types of the
+  rest, on three shapes — and the row count moves in both directions:
+
+  - an unquoted header of numeric-looking names over numeric columns,
+    such as `id,2024,2025` above `1,5,6`, reads as data, so the name
+    record becomes a row and you get **one row more**;
+
+  - a first record that is entirely missing values, `NA,NA,NA` above
+    `1,2,3`, reads as a header, costing **one row**;
+
+  - a headerless first record of entirely quoted numbers, `"1","2"`
+    above `"3","4"`, reads as a header, costing **one row**.
+
+  Detection is a convenience for files whose shape you do not know. When
+  you do know, pass `header = TRUE` or `header = FALSE` and none of this
+  applies.
+
+## See also
+
+[`sniff_csv()`](https://pedrobtz.github.io/zucsv/reference/sniff_csv.md),
+to see the header verdict and inferred types before committing to them —
+and to pin them down so nothing is inferred on the next run.
+
 ## Examples
 
 ``` r
@@ -97,6 +129,13 @@ read_csv(path)
 
 # Force a column's type rather than inferring it
 read_csv(path, col_types = c("character", "character"))
+#>   id  name
+#> 1  1   Ada
+#> 2  2 Linus
+#> 3  3 Grace
+
+# Detect whether the first record is a header
+read_csv(path, header = NA)
 #>   id  name
 #> 1  1   Ada
 #> 2  2 Linus
