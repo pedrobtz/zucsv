@@ -1,23 +1,54 @@
 # Memory safety, undefined behaviour and PROTECT-stack checks, from the
-# reusable workflows in pedrobtz/r-actions. These are the checks CRAN runs
-# after acceptance ("Additional issues"), and the ones zucsv most needs: the
-# package is mostly C, holds a FILE * and a parser across R error and
-# interrupt paths, and caches SEXPs across allocating calls.
+# reusable workflows in pedrobtz/r-actions, configured as the other zu-
+# packages configure them. These are the checks CRAN runs after acceptance
+# ("Additional issues"), and the ones zucsv most needs: the package is mostly
+# C, holds a FILE * and a parser across R error and interrupt paths, and
+# caches SEXPs across allocating calls.
 #
-# The local development loop covers ASan/UBSan and gctorture on macOS, but
-# macOS ASan cannot detect leaks and rchk does not run there at all, so these
-# jobs are what actually validate SS16's cleanup discipline.
-
+# paths-ignore skips the whole workflow for prose-only changes. These jobs
+# compile the package and run the suite, so nothing they can observe lives in
+# a .md file, a pkgdown article or .agents/. GitHub applies it only when every
+# changed file matches, so a commit touching both an article and src/ still
+# runs. R-CMD-check.yaml is deliberately left alone: README.md ships in the
+# tarball and --as-cran checks the URLs in it, which is a real check on a
+# prose-only change.
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
+    paths-ignore:
+      - '**.md'
+      - 'vignettes/**'
+      - '_pkgdown.yml'
+      - '.agents/**'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'vignettes/**'
+      - '_pkgdown.yml'
+      - '.agents/**'
+      - 'docs/**'
+  schedule:
+    - cron: "0 4 * * 2"
+  workflow_dispatch:
 
 name: native-checks
 
 permissions: read-all
 
 jobs:
+  # The guard on the vendored parser: a pull request that changes anything
+  # under src/vendor must also change src/vendor/zsv/UPSTREAM, which
+  # tools/update-zsv.sh rewrites with the commit it fetched and the patches it
+  # applied. That file is this package's manifest, so requiring it to move is
+  # what catches a hand edit nobody can reproduce. There is no
+  # tools/vendor/verify, so the tree-verification step skips itself.
+  vendor:
+    uses: pedrobtz/r-actions/.github/workflows/vendor.yml@v1
+    with:
+      vendor-dir: src/vendor
+      must-update: src/vendor/zsv/UPSTREAM
+
   # asan: true adds the AddressSanitizer job in the R-hub containers, where R
   # is itself an ASan build. That is the leak detection macOS cannot do, and
   # SS16's cleanup discipline is what most needs it.
@@ -26,8 +57,21 @@ jobs:
     with:
       asan: true
 
+  # --leak-check=full because R's own --use-valgrind does not set it, so a
+  # "definitely lost" total arrives with no stack and cannot be attributed
+  # from the artifact. Every resource this package leaks would leak on an
+  # error or interrupt path -- the FILE * and the parser, freed by
+  # R_UnwindProtect -- and a total with no stack is exactly what would not
+  # find that. "possibly lost" stays out of the error kinds: for an embedded
+  # R that is mostly the interpreter holding interior pointers into its own
+  # allocations.
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
+    with:
+      valgrind-opts: >-
+        --leak-check=full
+        --show-leak-kinds=definite,indirect
+        --errors-for-leak-kinds=definite,indirect
 
   lto:
     uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
@@ -35,5 +79,10 @@ jobs:
   gctorture:
     uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@v1
 
+  # Fail on findings rather than leaving the artifact to be read: the package
+  # is at zero now, so the next finding is a regression, and a warning nobody
+  # opens is not how you learn about it.
   rchk:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
+    with:
+      fail-on-findings: true

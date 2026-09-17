@@ -4,6 +4,7 @@ on:
     paths-ignore:
       - ".github/badges/coverage.svg"
   pull_request:
+  workflow_dispatch:
 
 name: coverage
 
