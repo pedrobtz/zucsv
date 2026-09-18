@@ -10,14 +10,15 @@ them, or to pin them down so a later run cannot drift:
 ## Usage
 
 ``` r
-sniff_csv(file, delimiter = ",", na = c("", "NA"))
+sniff_csv(file = NULL, delimiter = ",", na = c("", "NA"), text = NULL)
 ```
 
 ## Arguments
 
 - file:
 
-  Path to a local file, as a single string. `~` is expanded.
+  Path to a local file, as a single string. `~` is expanded. Supply this
+  or `text`, not both.
 
 - delimiter:
 
@@ -29,6 +30,12 @@ sniff_csv(file, delimiter = ",", na = c("", "NA"))
   Character vector of cell values to read as missing, or `NULL` to
   disable missing-value matching. Affects the inferred types, so pass
   here whatever you will pass to
+  [`read_csv()`](https://pedrobtz.github.io/zucsv/reference/read_csv.md).
+
+- text:
+
+  The CSV itself, as a character vector, instead of a path, with the
+  same meaning as in
   [`read_csv()`](https://pedrobtz.github.io/zucsv/reference/read_csv.md).
 
 ## Value

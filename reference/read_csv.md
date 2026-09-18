@@ -9,11 +9,12 @@ final length.
 
 ``` r
 read_csv(
-  file,
+  file = NULL,
   header = TRUE,
   delimiter = ",",
   na = c("", "NA"),
-  col_types = NULL
+  col_types = NULL,
+  text = NULL
 )
 ```
 
@@ -21,7 +22,8 @@ read_csv(
 
 - file:
 
-  Path to a local file, as a single string. `~` is expanded.
+  Path to a local file, as a single string. `~` is expanded. Supply this
+  or `text`, not both.
 
 - header:
 
@@ -52,6 +54,15 @@ read_csv(
   `"logical"`, `"integer"`, `"double"` or `"character"`. A single value
   applies to every column; otherwise give one per column. A cell that
   cannot be converted to a forced type is an error, not a missing value.
+
+- text:
+
+  The CSV itself, as a character vector, instead of a path. A vector of
+  several elements is joined with newlines, so each element is one line
+  — [`readLines()`](https://rdrr.io/r/base/readLines.html) output reads
+  back unchanged. The string's declared encoding is honoured and
+  converted to UTF-8, so a latin1 string reads correctly where a latin1
+  *file* is still an error.
 
 ## Value
 
@@ -114,6 +125,17 @@ and to pin them down so nothing is inferred on the next run.
 ## Examples
 
 ``` r
+# A small CSV given directly, rather than from a file
+read_csv(text = "a,b\n1,2")
+#>   a b
+#> 1 1 2
+
+# A character vector is one line per element
+read_csv(text = c("id,name", "1,Ada", "2,Linus"))
+#>   id  name
+#> 1  1   Ada
+#> 2  2 Linus
+
 path <- tempfile(fileext = ".csv")
 write.csv(
   data.frame(id = 1:3, name = c("Ada", "Linus", "Grace")),
