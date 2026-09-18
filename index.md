@@ -13,6 +13,13 @@ decides what they mean in R.
 
 ``` r
 
+install.packages("zucsv")
+```
+
+Or the development version:
+
+``` r
+
 # install.packages("pak")
 pak::pak("pedrobtz/zucsv")
 ```
@@ -101,7 +108,7 @@ Faster than
 which is multi-threaded and single-pass; comparable to a fully
 materialised `vroom`, ahead of it on character-heavy data, wide tables
 and small files. Numbers and method in
-[`bench/RESULTS.md`](https://pedrobtz.github.io/zucsv/bench/RESULTS.md).
+[`bench/RESULTS.md`](https://github.com/pedrobtz/zucsv/blob/main/bench/RESULTS.md).
 
 ## Licence
 

@@ -4,7 +4,7 @@ pkgdown_sha: ~
 articles:
   articles/japanese-postal-codes: japanese-postal-codes.html
   articles/zucsv: zucsv.html
-last_built: 2026-09-18T05:01Z
+last_built: 2026-09-18T12:49Z
 urls:
   reference: https://pedrobtz.github.io/zucsv/reference
   article: https://pedrobtz.github.io/zucsv/articles

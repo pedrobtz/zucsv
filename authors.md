@@ -2,7 +2,7 @@
 
 ## Authors
 
-- **Pedro Baltazar**. Author, maintainer.
+- **Pedro Baltazar**. Author, maintainer, copyright holder.
 
 - **Guarnerix Inc dba Liquidaty**. Copyright holder.  
   Author of the bundled 'zsv' library
