@@ -2,7 +2,8 @@ Package: zucsv
 Title: Read CSV Files Using the 'zsv' Parser
 Version: 0.1.0
 Authors@R: c(
-    person("Pedro", "Baltazar", email = "pedrobtz@gmail.com", role = c("aut", "cre")),
+    person("Pedro", "Baltazar", email = "pedrobtz@gmail.com",
+           role = c("aut", "cre", "cph")),
     person("Guarnerix Inc dba Liquidaty", role = "cph",
            comment = "Author of the bundled 'zsv' library")
   )
@@ -25,3 +26,4 @@ Suggests:
 Config/testthat/edition: 3
 Config/Needs/website: rmarkdown, data.table, vroom
 Config/roxygen2/version: 8.1.0
+Language: en-US

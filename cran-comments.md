@@ -24,9 +24,20 @@
   rows, a multi-megabyte cell) are behind `skip_on_cran()`. Everything runs
   in `tempdir()`.
 
+## Method references
+
+There are no published references describing the methods in this package. It
+implements CSV parsing as defined by RFC 4180, and column-type inference whose
+rules are documented in `?read_csv` and chosen to agree with
+`utils::read.csv()` on the values both accept.
+
 ## Test environments
 
-* local macOS 15, R 4.5.2
-* GitHub Actions: macOS, Windows, Ubuntu (R-devel, release, oldrel-1)
-* GitHub Actions (pedrobtz/r-actions@v1): ASan/UBSan under R-devel, valgrind,
-  LTO, gctorture, and rchk
+* local macOS 26.6.2, R 4.6.1
+* GitHub Actions: macOS, Windows and Ubuntu on R release; Ubuntu on oldrel-1
+* GitHub Actions, in the R-hub containers built to match CRAN's r-devel Linux
+  flavors -- clang23, ubuntu-clang and ubuntu-gcc16 -- compiled as CRAN
+  compiles them, with `CC += -std=gnu23` and `CFLAGS += -pedantic`
+* GitHub Actions (pedrobtz/r-actions@v1): AddressSanitizer and
+  UndefinedBehaviorSanitizer under R-devel, valgrind, LTO, gctorture, and
+  rchk
