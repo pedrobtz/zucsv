@@ -17,16 +17,20 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Pedro Baltazar \email{pedrobtz@gmail.com}
+\strong{Maintainer}: Pedro Baltazar \email{pedrobtz@gmail.com} [copyright holder]
 
 Authors:
 \itemize{
-  \item Pedro Baltazar \email{pedrobtz@gmail.com}
+  \item Pedro Baltazar \email{pedrobtz@gmail.com} [copyright holder]
 }
 
 Other contributors:
 \itemize{
-  \item Guarnerix Inc dba Liquidaty (Author of the bundled 'zsv' library) [copyright holder]
+  \item Tai Chi Minh Ralph Eastwood (Author of the bundled 'zsv' library) [contributor, copyright holder]
+  \item Matt Wong (Author of the bundled 'zsv' library) [contributor]
+  \item Guarnerix Inc dba Liquidaty (Copyright holder of the bundled 'zsv' library) [copyright holder]
+  \item zsv contributors (Contributors to the bundled 'zsv' library) [contributor, copyright holder]
+  \item Max Ogden (Author of the 'csv-spectrum' test fixtures) [contributor, copyright holder]
 }
 
 }

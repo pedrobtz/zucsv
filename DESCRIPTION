@@ -4,8 +4,16 @@ Version: 0.1.0
 Authors@R: c(
     person("Pedro", "Baltazar", email = "pedrobtz@gmail.com",
            role = c("aut", "cre", "cph")),
+    person("Tai Chi Minh Ralph", "Eastwood", role = c("ctb", "cph"),
+           comment = "Author of the bundled 'zsv' library"),
+    person("Matt", "Wong", role = "ctb",
+           comment = "Author of the bundled 'zsv' library"),
     person("Guarnerix Inc dba Liquidaty", role = "cph",
-           comment = "Author of the bundled 'zsv' library")
+           comment = "Copyright holder of the bundled 'zsv' library"),
+    person("zsv contributors", role = c("ctb", "cph"),
+           comment = "Contributors to the bundled 'zsv' library"),
+    person("Max", "Ogden", role = c("ctb", "cph"),
+           comment = "Author of the 'csv-spectrum' test fixtures")
   )
 Description: Reads comma-separated and other delimited text files into base R
     data frames using the 'zsv' C parser <https://github.com/liquidaty/zsv> as
