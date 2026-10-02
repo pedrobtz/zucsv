@@ -5,9 +5,31 @@ Bundled third-party code
 ------------------------
 
 Files:     src/vendor/zsv/**
-Copyright: 2021 Guarnerix Inc dba Liquidaty
+Copyright: 2021 Tai Chi Minh Ralph Eastwood, Matt Wong (Guarnerix Inc dba
+           Liquidaty), Guarnerix Inc dba Liquidaty, and the zsv/lib
+           contributors
 Licence:   MIT (reproduced in src/vendor/zsv/LICENSE)
 Source:    https://github.com/liquidaty/zsv
+
+Per-file notices, as they appear in the upstream file headers:
+
+  src/zsv.c, src/zsv_internal.c, src/vector_delim.c
+      Copyright (C) 2021 Tai Chi Minh Ralph Eastwood (self),
+      Matt Wong (Guarnerix Inc dba Liquidaty)
+  include/zsv/api.h, include/zsv/common.h
+      Copyright (C) 2021 Tai Chi Minh Ralph Eastwood, Matt Wong and
+      Guarnerix dba Liquidaty
+  include/zsv/utils/compiler.h
+      Copyright (C) 2021 Tai Chi Minh Ralph Eastwood
+  include/zsv.h, include/zsv/utils/string.h, include/zsv/utils/utf8.h
+      Copyright (C) 2021 Liquidaty and the zsv/lib contributors
+  all other files (no per-file notice)
+      Copyright (c) 2021 Guarnerix Inc dba Liquidaty (src/vendor/zsv/LICENSE)
+
+Matt Wong's contribution is credited in DESCRIPTION with role "ctb"; the
+headers attribute its copyright to Guarnerix Inc dba Liquidaty, which is
+listed with role "cph". The upstream git history lists further
+contributors, credited collectively as "zsv contributors".
 
 These files are a subset of the zsv CSV parser, vendored unmodified except
 for the patches listed in src/vendor/zsv/UPSTREAM, which also records the
@@ -16,7 +38,8 @@ command-line application and its SQL, SQLite, JSON and extension facilities
 are not part of this package.
 
 Files:     tests/testthat/test-spectrum.R (fixtures and expected values)
-Copyright: 2014 Max Ogden and csv-spectrum contributors
+Copyright: 2014 Max Ogden and csv-spectrum contributors (Max Ogden is
+           listed in DESCRIPTION with roles "ctb" and "cph")
 Licence:   BSD-2-Clause
 Source:    https://github.com/max-mapper/csv-spectrum
 
