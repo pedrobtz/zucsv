@@ -112,5 +112,6 @@ and small files. Numbers and method in
 
 ## Licence
 
-MIT. The bundled `zsv` sources are MIT, copyright Guarnerix Inc dba
-Liquidaty; see `inst/COPYRIGHTS` and `src/vendor/zsv/UPSTREAM`.
+MIT. The bundled `zsv` sources are MIT, copyright Tai Chi Minh Ralph
+Eastwood, Matt Wong, Guarnerix Inc dba Liquidaty and the zsv
+contributors; see `inst/COPYRIGHTS` and `src/vendor/zsv/UPSTREAM`.

@@ -4,8 +4,20 @@
 
 - **Pedro Baltazar**. Author, maintainer, copyright holder.
 
-- **Guarnerix Inc dba Liquidaty**. Copyright holder.  
+- **Tai Chi Minh Ralph Eastwood**. Contributor, copyright holder.  
   Author of the bundled 'zsv' library
+
+- **Matt Wong**. Contributor.  
+  Author of the bundled 'zsv' library
+
+- **Guarnerix Inc dba Liquidaty**. Copyright holder.  
+  Copyright holder of the bundled 'zsv' library
+
+- **zsv contributors**. Contributor, copyright holder.  
+  Contributors to the bundled 'zsv' library
+
+- **Max Ogden**. Contributor, copyright holder.  
+  Author of the 'csv-spectrum' test fixtures
 
 ## Citation
 

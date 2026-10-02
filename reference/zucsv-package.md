@@ -19,13 +19,24 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Pedro Baltazar <pedrobtz@gmail.com>
+**Maintainer**: Pedro Baltazar <pedrobtz@gmail.com> \[copyright holder\]
 
 Authors:
 
-- Pedro Baltazar <pedrobtz@gmail.com>
+- Pedro Baltazar <pedrobtz@gmail.com> \[copyright holder\]
 
 Other contributors:
 
-- Guarnerix Inc dba Liquidaty (Author of the bundled 'zsv' library)
-  \[copyright holder\]
+- Tai Chi Minh Ralph Eastwood (Author of the bundled 'zsv' library)
+  \[contributor, copyright holder\]
+
+- Matt Wong (Author of the bundled 'zsv' library) \[contributor\]
+
+- Guarnerix Inc dba Liquidaty (Copyright holder of the bundled 'zsv'
+  library) \[copyright holder\]
+
+- zsv contributors (Contributors to the bundled 'zsv' library)
+  \[contributor, copyright holder\]
+
+- Max Ogden (Author of the 'csv-spectrum' test fixtures) \[contributor,
+  copyright holder\]
