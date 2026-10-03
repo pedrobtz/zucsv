@@ -4,3 +4,4 @@ docs
 tests/testthat/_problems
 .Rproj.user
 bench/results.rds
+CRAN-SUBMISSION
