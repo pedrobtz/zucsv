@@ -6,7 +6,7 @@ Six stages, each ending in a green `R CMD check` on the three CI platforms. A st
 
 Rough sizing: 0 and 5 are small, 1 depends on what the vendored code audit turns up, 2–4 are the bulk of the work.
 
-**Progress:** Stages 0–4 are complete (one commit each). Stage 5 is next.
+**Progress:** Stages 0–5 are complete. 0.1.0 was published on CRAN on 2026-10-16 from `1cc69d9`, the resubmission after CRAN's `Authors@R` request; the tag `0.1.0` and GitHub release are still to be created; `main` is `0.1.0.9000` and the next release is v0.1.1 ([#13](https://github.com/pedrobtz/zucsv/issues/13)).
 Findings from the finished stages have been folded back into
 `zucsv-design.md`; `tools/zsv-behavior.md` is the record of what the vendored
 parser actually does.
