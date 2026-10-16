@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-`zucsv` is implemented and at version 0.1.0, awaiting its first CRAN submission. `read_csv()` in
+`zucsv` 0.1.0 is on CRAN (published 2026-10-16); `main` is `0.1.0.9000`, working toward v0.1.1. `read_csv()` in
 [R/read_csv.R](R/read_csv.R) is a thin wrapper over the C reader in `src/read_csv.c` and
 `src/convert.c`, built on the vendored parser under `src/vendor/zsv/`; the suite lives in
 `tests/testthat/`. The full design document is [.agents/zucsv-design.md](.agents/zucsv-design.md)
@@ -79,10 +79,16 @@ Consequences that shape most implementation decisions:
 Exported names are unprefixed (`zucsv::read_csv()`, not `zu_read_csv()`) — the package name is the
 namespace.
 
-## Before the first release
+## Releases
 
-Roadmap stages 0–4 are done, and most of Stage 5 with them. What remains is the remote checks
-(`devtools::check_win_devel()`, `check_mac_release()`, R-hub), the submission itself, and the tag,
-GitHub release and CRAN badge that follow acceptance. `DESCRIPTION`, `README.md`, `NEWS.md` and
-`cran-comments.md` are all filled in — keep them in step with any API change that lands before
-submission, since they currently describe a package with one exported function.
+0.1.0 was published on CRAN on 2026-10-16, from commit `1cc69d9` (the resubmission that named every
+`zsv` author in `Authors@R`). The tag is the bare version, `0.1.0`, not `v0.1.0` (still to be created, with its GitHub release, as of 2026-10-16). `main` moved to
+`0.1.0.9000` right after, with a `# zucsv (development version)` heading in `NEWS.md`; record every
+user-visible change under it.
+
+The next release is v0.1.1, tracked in [#13](https://github.com/pedrobtz/zucsv/issues/13): attach
+planned work to it as sub-issues. CRAN's cadence opens on 2026-11-27, six weeks after publication
+([#14](https://github.com/pedrobtz/zucsv/issues/14)); that is the earliest a submission is allowed,
+not a plan to submit. The design's "Non-goals for v0.1" (§3) still bind until a design revision lifts
+one. Any new vendored file that names an author means a new `Authors@R` entry: CRAN asked for every
+one by name.
