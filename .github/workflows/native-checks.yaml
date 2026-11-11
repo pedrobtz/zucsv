@@ -13,14 +13,8 @@
 # tarball and --as-cran checks the URLs in it, which is a real check on a
 # prose-only change.
 on:
-  push:
-    branches: [main, master, develop]
-    paths-ignore:
-      - '**.md'
-      - 'vignettes/**'
-      - '_pkgdown.yml'
-      - '.agents/**'
-      - 'docs/**'
+  # No `push:`: a pull request already checks its merge with main,
+  # and the schedule checks main (r-actions README, "Pushes to main").
   pull_request:
     paths-ignore:
       - '**.md'
@@ -29,7 +23,7 @@ on:
       - '.agents/**'
       - 'docs/**'
   schedule:
-    - cron: "0 4 * * 2"
+    - cron: "14 20 * * 6"
   workflow_dispatch:
 
 name: native-checks
