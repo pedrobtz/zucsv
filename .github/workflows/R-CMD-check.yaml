@@ -13,8 +13,11 @@
 # R-devel on Linux already, on the compilers CRAN actually uses.
 
 on:
-  push:
-    branches: [main, master, develop]
+  # No `push:`: a pull request already checks its merge with main,
+  # and the schedule checks main (r-actions README, "Pushes to main").
+  schedule:
+    - cron: "4 20 * * 6"
+  workflow_dispatch:
   pull_request:
 
 name: R-CMD-check.yaml
