@@ -13,3 +13,7 @@
 ^\.covrignore$
 ^vignettes/articles$
 ^CRAN-SUBMISSION$
+^\.superpowers$
+^\.worktrees$
+^\.claude$
+^AGENTS\.md$
