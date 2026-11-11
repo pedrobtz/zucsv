@@ -25,12 +25,12 @@ Source:
 [`DESCRIPTION`](https://github.com/pedrobtz/zucsv/blob/main/DESCRIPTION)
 
 Baltazar P (2026). *zucsv: Read CSV Files Using the 'zsv' Parser*. R
-package version 0.1.0, <https://github.com/pedrobtz/zucsv>.
+package version 0.1.0.9000, <https://github.com/pedrobtz/zucsv>.
 
     @Manual{,
       title = {zucsv: Read CSV Files Using the 'zsv' Parser},
       author = {Pedro Baltazar},
       year = {2026},
-      note = {R package version 0.1.0},
+      note = {R package version 0.1.0.9000},
       url = {https://github.com/pedrobtz/zucsv},
     }

@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="index.html">zucsv</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -39,51 +39,103 @@
 
 <div id="claudemd" class="section level1">
 
+<!-- markdownlint-disable-next-line MD013 -->
 <p>This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.</p>
 <div class="section level2">
-<h2 id="project-state">Project state<a class="anchor" aria-label="anchor" href="#project-state"></a></h2>
-<p><code>zucsv</code> is implemented and at version 0.1.0, awaiting its first CRAN submission. <code><a href="reference/read_csv.html">read_csv()</a></code> in <a href="R/read_csv.R">R/read_csv.R</a> is a thin wrapper over the C reader in <code>src/read_csv.c</code> and <code>src/convert.c</code>, built on the vendored parser under <code>src/vendor/zsv/</code>; the suite lives in <code>tests/testthat/</code>. The full design document is <a href=".agents/zucsv-design.html">.agents/zucsv-design.md</a> and the staged plan is <a href=".agents/ROADMAP.html">.agents/ROADMAP.md</a>. Both are build-ignored (<code>^\.agents$</code>), so they stay out of the tarball.</p>
-<p><strong>Read <code>.agents/zucsv-design.md</code> before writing any code.</strong> It is the specification for v0.1 and covers the public API, type-inference rules, error messages, two-pass strategy, resource limits, the <code>src/</code> file layout, and the explicit non-goals. Treat its “Non-goals for v0.1” (§3) as binding: do not add <code>write_csv()</code>, connections, URL input, date parsing, column selection, <code>skip</code>/<code>n_max</code>, ALTREP, or a parser-mode switch unless the user asks to revise the design. §29 is the decision log — check it before reopening a choice that looks arbitrary. <code>.agents/ROADMAP.md</code> says which stage the work is in and what its exit criteria are; finish a stage’s criteria before starting the next.</p>
+<h2 id="shared-conventions">Shared conventions<a class="anchor" aria-label="anchor" href="#shared-conventions"></a></h2>
+<p>The portfolio’s shared rules are synced into <code>.claude/shared/</code> from <code>pedrobtz/packages:claude/shared/</code>. Never edit them here. Where this file and a shared file disagree, this file wins for this package.</p>
+<p>@.claude/shared/workflow.md @.claude/shared/r-package.md @.claude/shared/ci.md @.claude/shared/native-code.md @.claude/shared/correctness.md @.claude/shared/assurance.md</p>
+</div>
+<div class="section level2">
+<h2 id="what-this-is">What this is<a class="anchor" aria-label="anchor" href="#what-this-is"></a></h2>
+<p><code>zucsv</code> reads CSV files into data frames. <code><a href="reference/read_csv.html">read_csv()</a></code> in <a href="R/read_csv.R">R/read_csv.R</a> is a thin wrapper over the C reader in <code>src/read_csv.c</code> and <code>src/convert.c</code>, built on the vendored parser under <code>src/vendor/zsv/</code>. Base R C API only, no runtime R package dependencies.</p>
+<p>The full design document is <a href=".agents/zucsv-design.html">.agents/zucsv-design.md</a> and the staged plan is <a href=".agents/ROADMAP.html">.agents/ROADMAP.md</a>. Both are build-ignored (<code>^\.agents$</code>), so they stay out of the tarball. They outrank this file.</p>
+<p><strong>Read <code>.agents/zucsv-design.md</code> before writing any code.</strong> It is the specification for v0.1 and covers the public API, type-inference rules, error messages, two-pass strategy, resource limits, the <code>src/</code> file layout, and the explicit non-goals. Treat its “Non-goals for v0.1” (§3) as binding: do not add <code>write_csv()</code>, connections, URL input, date parsing, column selection, <code>skip</code>/<code>n_max</code>, ALTREP, or a parser-mode switch unless the user asks to revise the design. They still bind after 0.1.0, until a design revision lifts one. §29 is the decision log; check it before reopening a choice that looks arbitrary. <code>.agents/ROADMAP.md</code> says which stage the work is in and what its exit criteria are; finish a stage’s criteria before starting the next.</p>
+</div>
+<div class="section level2">
+<h2 id="current-state">Current state<a class="anchor" aria-label="anchor" href="#current-state"></a></h2>
+<p>0.1.0 is on CRAN, published 2026-10-16 from commit <code>1cc69d9</code> (the resubmission that named every <code>zsv</code> author in <code>Authors@R</code>). <code>main</code> is at <code>0.1.0.9000</code>, with a <code># zucsv (development version)</code> heading in <code>NEWS.md</code>; record every user-visible change under it. As of 2026-11-11 the <code>0.1.0</code> tag and its GitHub release have still not been created. The tag is the bare version, <code>0.1.0</code>, not <code>v0.1.0</code>.</p>
+</div>
+<div class="section level2">
+<h2 id="versions-and-dependents">Versions and dependents<a class="anchor" aria-label="anchor" href="#versions-and-dependents"></a></h2>
+<p>The next release is v0.1.1, tracked in <a href="https://github.com/pedrobtz/zucsv/issues/13" class="external-link">#13</a>: attach planned work to it as sub-issues. CRAN’s cadence opens on 2026-11-27, six weeks after publication (<a href="https://github.com/pedrobtz/zucsv/issues/14" class="external-link">#14</a>); that is the earliest a submission is allowed, not a plan to submit. Sibling packages that depend on this one: none recorded.</p>
+<p>Any new vendored file that names an author means a new <code>Authors@R</code> entry: CRAN asked for every one by name.</p>
 </div>
 <div class="section level2">
 <h2 id="commands">Commands<a class="anchor" aria-label="anchor" href="#commands"></a></h2>
-<p>Development uses <code>devtools</code>/<code>testthat</code> from an R session at the package root:</p>
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">load_all</span><span class="op">(</span><span class="op">)</span>                      <span class="co"># compile src/ and load, without installing</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">document</span><span class="op">(</span><span class="op">)</span>                      <span class="co"># regenerate NAMESPACE and man/ from roxygen</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">test</span><span class="op">(</span><span class="op">)</span>                          <span class="co"># run all tests</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">test</span><span class="op">(</span>filter <span class="op">=</span> <span class="st">"read_csv"</span><span class="op">)</span>       <span class="co"># run only tests/testthat/test-read_csv.R</span></span>
-<span><span class="fu">testthat</span><span class="fu">::</span><span class="fu"><a href="https://testthat.r-lib.org/reference/test_file.html" class="external-link">test_file</a></span><span class="op">(</span><span class="st">"tests/testthat/test-read_csv.R"</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">check</span><span class="op">(</span><span class="op">)</span>                         <span class="co"># R CMD check</span></span></code></pre></div>
-<p>From a shell:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="ex">R</span> CMD INSTALL <span class="at">--preclean</span> .</span>
-<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="ex">R</span> CMD build . <span class="kw">&amp;&amp;</span> <span class="ex">R</span> CMD check <span class="at">--as-cran</span> zucsv_<span class="pp">*</span>.tar.gz</span></code></pre></div>
-<p><code>devtools::document()</code> must be re-run after touching any roxygen block — <code>NAMESPACE</code> is generated and must not be edited by hand. After editing C sources, <code>devtools::load_all()</code> recompiles; use <code>R CMD INSTALL --preclean .</code> when object files go stale.</p>
-<p>CI (<code>.github/workflows/R-CMD-check.yaml</code>) runs <code>R CMD check</code> on macOS, Windows, and Ubuntu (devel/release/oldrel-1); <code>pkgdown.yaml</code> builds the site on pushes to <code>main</code>.</p>
+<p>Run from the package root. The everyday <code>devtools</code> loop is in <code>.claude/shared/r-package.md</code>; these are the package’s own.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="ex">R</span> CMD INSTALL <span class="at">--preclean</span> .              <span class="co"># when object files go stale</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="ex">R</span> CMD build . <span class="kw">&amp;&amp;</span> <span class="ex">R</span> CMD check <span class="at">--as-cran</span> zucsv_<span class="pp">*</span>.tar.gz</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="va">ZUCSV_STRESS</span><span class="op">=</span>true <span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'devtools::test()'</span>   <span class="co"># limits, millions of rows</span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="ex">Rscript</span> bench/bench.R <span class="pp">[</span><span class="ss">reps</span><span class="pp">]</span>            <span class="co"># two-pass overhead vs read.csv()</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="ex">tools/update-zsv.sh</span> <span class="op">&lt;</span>commit-ish<span class="op">&gt;</span>        <span class="co"># re-vendor zsv, re-apply patches</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="ex">Rscript</span> tools/update-csv-spectrum.R     <span class="co"># regenerate test-spectrum.R</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="ex">Rscript</span> tools/check-csv-test-data.R     <span class="co"># csv-test-data conformance check</span></span></code></pre></div>
+<p>After editing C sources, <code>devtools::load_all()</code> recompiles; use <code>R CMD INSTALL --preclean .</code> when object files go stale.</p>
 </div>
 <div class="section level2">
 <h2 id="architecture">Architecture<a class="anchor" aria-label="anchor" href="#architecture"></a></h2>
 <p>The design splits responsibility at one line (design §28):</p>
-<pre><code>zsv owns CSV syntax        →  where rows and fields begin and end
-zucsv owns R semantics     →  NA matching, column types, data.frame construction, error messages</code></pre>
+<pre class="text"><code>zsv owns CSV syntax        →  where rows and fields begin and end
+zucsv owns R semantics     →  NA matching, column types, data.frame
+                              construction, error messages</code></pre>
 <p>Consequences that shape most implementation decisions:</p>
 <ul><li>
-<strong>Base R C API only, via <code>.Call</code>.</strong> No Rcpp, no cpp11, no runtime R package dependencies. Native symbols get registered in <code>src/init.c</code> with dynamic symbol lookup disabled; <code>R/zucsv-package.R</code> already carries the <code>@useDynLib zucsv, .registration = TRUE</code> tag.</li>
+<strong>Base R C API only, via <code>.Call</code>.</strong> No Rcpp, no cpp11, no runtime R package dependencies. Native symbols get registered in <code>src/init.c</code> with dynamic symbol lookup disabled; <code>R/zucsv-package.R</code> carries the <code>@useDynLib zucsv, .registration = TRUE</code> tag.</li>
 <li>
-<strong>Thin R wrapper.</strong> <code><a href="reference/read_csv.html">read_csv()</a></code> in <code>R/read_csv.R</code> normalizes arguments and calls one C routine. Any validation that affects native safety must also be enforced in C, not only in R.</li>
+<strong>Thin R wrapper.</strong> <code><a href="reference/read_csv.html">read_csv()</a></code> in <code>R/read_csv.R</code> normalizes arguments and calls one C routine.</li>
 <li>
 <strong>Two passes over the file</strong> (design §9): pass 1 counts rows, fixes the column count, applies <code>na</code> matching, and infers types; pass 2 allocates each column at its exact final length and writes converted cells straight into it. No growable vectors, no intermediate row lists. This is why v0.1 accepts only seekable local file paths.</li>
 <li>
-<strong><code>zsv</code> is vendored</strong>, parser subset only, under <code>src/vendor/zsv/</code>, pinned to a recorded upstream commit. Never build against a system <code>zsv</code>. Keep upstream sources unmodified — R-specific adaptation belongs in <code>zucsv</code>’s own <code>src/</code> files. Record repo/tag/commit/date and the upstream license when vendoring.</li>
+<strong><code>zsv</code> is vendored</strong>, parser subset only, under <code>src/vendor/zsv/</code> (see Vendored native code).</li>
+</ul><p>Exported names are unprefixed (<code><a href="reference/read_csv.html">zucsv::read_csv()</a></code>, not <code>zu_read_csv()</code>): the package name is the namespace.</p>
+</div>
+<div class="section level2">
+<h2 id="invariants-that-are-easy-to-break">Invariants that are easy to break<a class="anchor" aria-label="anchor" href="#invariants-that-are-easy-to-break"></a></h2>
+<ul><li>
+<strong>Validation that affects native safety is enforced in C</strong>, not only in the R wrapper.</li>
 <li>
 <strong>Strict errors, never silent <code>NA</code>.</strong> A failed forced conversion, a ragged row, or an embedded NUL is an error carrying row, column, and column-name context. Raw <code>zsv</code> status codes stay internal.</li>
 <li>
-<strong>Long jumps are the hazard.</strong> Every <code>FILE *</code>, <code>zsv_parser</code>, and native allocation must be released on R errors as well as on success (<code>R_UnwindProtect()</code> or an equivalent discipline), and the row loop calls <code>R_CheckUserInterrupt()</code> periodically (≈ every 16k rows), not per row.</li>
-</ul><p>Exported names are unprefixed (<code><a href="reference/read_csv.html">zucsv::read_csv()</a></code>, not <code>zu_read_csv()</code>) — the package name is the namespace.</p>
+<strong>Long jumps are the hazard.</strong> Every <code>FILE *</code>, <code>zsv_parser</code>, and native allocation must be released on R errors as well as on success (<code>R_UnwindProtect()</code> or an equivalent discipline), and the row loop calls <code>R_CheckUserInterrupt()</code> periodically (about every 16k rows), not per row.</li>
+<li><strong>Never build against a system <code>zsv</code>.</strong></li>
+<li>
+<strong>R-specific adaptation belongs in <code>zucsv</code>’s own <code>src/</code> files</strong>, never in <code>src/vendor/</code>. The only changes to upstream are the patches in <code>tools/patches/</code>, applied by <code>tools/update-zsv.sh</code>.</li>
+</ul></div>
+<div class="section level2">
+<h2 id="testing">Testing<a class="anchor" aria-label="anchor" href="#testing"></a></h2>
+<ul><li>
+<strong>Fixtures are raw bytes.</strong> <code>helper-fixtures.R</code> writes them with <code>csv_file()</code> and <code>read_text()</code>, so line endings, BOMs, NULs and invalid UTF-8 are exact and the test files stay pure ASCII.</li>
+<li>
+<strong><code>test-spectrum.R</code> is generated</strong> from csv-spectrum (BSD-2-Clause) by <code>tools/update-csv-spectrum.R</code>, as raw byte vectors so git cannot normalise the CRLF fixtures. Regenerate it; do not edit it by hand.</li>
+<li>
+<strong>csv-test-data is not in the suite</strong>: it declares no licence, so <code>tools/check-csv-test-data.R</code> clones it at run time. Every fixture has a recorded expectation there, including the ones where zucsv deliberately differs, each with the design section that decides it.</li>
+<li>
+<strong><code>test-upstream.R</code> pins the vendored parser’s edge behaviour</strong> recorded in <code>tools/zsv-behavior.md</code>; it is what catches a change on re-vendoring.</li>
+<li>
+<strong><code>test-differential.R</code> compares with <code><a href="https://rdrr.io/r/utils/read.table.html" class="external-link">utils::read.csv()</a></code></strong> where the semantics overlap, with name repair off (zucsv does not repair names, design §5).</li>
+<li>
+<strong>Stress tests are gated on <code>ZUCSV_STRESS=true</code></strong> rather than <code>skip_on_cran()</code> (<code>skip_unless_stress()</code>): they check limits, not memory safety, and under gctorture they would cost hours.</li>
+</ul></div>
+<div class="section level2">
+<h2 id="continuous-integration">Continuous integration<a class="anchor" aria-label="anchor" href="#continuous-integration"></a></h2>
+<ul><li>
+<code>R-CMD-check.yaml</code> calls <code>r-cmd-check.yml@v1</code>: the GitHub runners plus the R-hub containers matching CRAN’s r-devel clang and GCC flavours, which see the bundled parser’s warnings before CRAN’s pretest does.</li>
+<li>
+<code>native-checks.yaml</code> calls r-actions’ <code>vendor.yml</code> (a change under <code>src/vendor</code> must also change <code>src/vendor/zsv/UPSTREAM</code>, the manifest), <code>sanitizers.yml</code> (with <code>asan: true</code>), <code>valgrind.yml</code> (with <code>--leak-check=full</code>, so leaks on error and interrupt paths carry a stack), <code>lto.yml</code>, <code>gctorture.yml</code>, <code>rchk.yml</code> (<code>fail-on-findings: true</code>) and <code>cran-special.yml</code> (full only). It runs weekly on Tuesdays and on dispatch.</li>
+<li>
+<code>coverage.yaml</code> calls <code>coverage.yml@v1</code>; <code>pkgdown.yaml</code> builds the site on pushes to <code>main</code>.</li>
+</ul><p><strong>Deviations from <code>.claude/shared/ci.md</code>, as of 2026-11-11:</strong> no workflow calls <code>changes.yml</code>. <code>native-checks.yaml</code> skips prose-only changes with a <code>paths-ignore</code> list instead, and <code>R-CMD-check.yaml</code> deliberately has none, because <code>README.md</code> ships in the tarball and <code>--as-cran</code> checks its URLs. <code>coverage.yaml</code> is pinned to <code>@v1</code>, not to a commit. Bring these in line with <code>ci.md</code> in their own pull request.</p>
 </div>
 <div class="section level2">
-<h2 id="before-the-first-release">Before the first release<a class="anchor" aria-label="anchor" href="#before-the-first-release"></a></h2>
-<p>Roadmap stages 0–4 are done, and most of Stage 5 with them. What remains is the remote checks (<code>devtools::check_win_devel()</code>, <code>check_mac_release()</code>, R-hub), the submission itself, and the tag, GitHub release and CRAN badge that follow acceptance. <code>DESCRIPTION</code>, <code>README.md</code>, <code>NEWS.md</code> and <code>cran-comments.md</code> are all filled in — keep them in step with any API change that lands before submission, since they currently describe a package with one exported function.</p>
+<h2 id="vendored-native-code">Vendored native code<a class="anchor" aria-label="anchor" href="#vendored-native-code"></a></h2>
+<p><code>zsv</code> from <a href="https://github.com/liquidaty/zsv" class="external-link uri">https://github.com/liquidaty/zsv</a>, MIT, parser core only, at commit <code>61959542b18581e38f291957d9a500fab77be719</code> (<code>v1.4.3-41-g6195954</code>), vendored 2026-09-12. <code>src/vendor/zsv/UPSTREAM</code> records the upstream, commit, date, licence and the patches; <code>tools/update-zsv.sh &lt;commit-ish&gt;</code> re-vendors and rewrites it. <code>src/vendor/zsv/src/zsv.c</code> is a unity build, so <code>src/Makevars</code> lists <code>vendor/zsv/src/zsv.o</code> as the only vendored object. <code>ZSV_EXTRAS</code> is never defined, which keeps <code>&lt;sqlite3.h&gt;</code> and <code>&lt;zsv/utils/arg.h&gt;</code> out of the build.</p>
+<p>Local patches, in <code>tools/patches/</code>:</p>
+<ul><li>
+<code>0001-guard-unused-forward-declaration.patch</code>: keeps <code>-Wunused-function</code> clean.</li>
+<li>
+<code>0002-no-stderr-default-sink.patch</code>: removes the <code>stderr</code>/<code>fprintf</code> references so R CMD check’s compiled-code test passes.</li>
+</ul><p>After an upgrade, re-verify <code>tools/zsv-behavior.md</code> (what the parser does at the edges the design depends on: blank records, BOM, oversize rows, unbalanced quotes); <code>tools/update-zsv.sh</code> does not rewrite it.</p>
 </div>
 </div>
 
