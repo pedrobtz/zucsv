@@ -5,7 +5,7 @@
 [![CRAN status](https://www.r-pkg.org/badges/version/zucsv)](https://CRAN.R-project.org/package=zucsv)
 [![R-CMD-check](https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/R-CMD-check.yaml)
 [![native-checks](https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml/badge.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/native-checks.yaml)
-[![Coverage](https://github.com/pedrobtz/zucsv/raw/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/coverage.yaml)
+[![Coverage](https://raw.githubusercontent.com/pedrobtz/zucsv/gh-pages/badges/coverage.svg)](https://github.com/pedrobtz/zucsv/actions/workflows/coverage.yaml)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/license/mit)
 <!-- badges: end -->
