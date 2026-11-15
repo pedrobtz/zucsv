@@ -5,16 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Shared conventions
 
-The portfolio's shared rules are synced into `.claude/shared/` from
-`pedrobtz/packages:claude/shared/`. Never edit them here. Where this file and
-a shared file disagree, this file wins for this package.
+<!-- r-skills: shared-rules -->
 
-@.claude/shared/workflow.md
-@.claude/shared/r-package.md
-@.claude/shared/ci.md
-@.claude/shared/native-code.md
-@.claude/shared/correctness.md
-@.claude/shared/assurance.md
+The portfolio's shared rules (`workflow`, `r-package`, `ci`, `native-code`,
+`correctness`, `assurance`) come from the
+[r-skills](https://github.com/pedrobtz/r-skills) plugin's `rules/`, loaded at
+session start because of the marker above. Never copy them here. Where this
+file and a shared rule disagree, this file wins for this package. Cloud
+sessions do not load the plugin and run without them.
 
 ## What this is
 
@@ -63,7 +61,7 @@ CRAN asked for every one by name.
 ## Commands
 
 Run from the package root. The everyday `devtools` loop is in
-`.claude/shared/r-package.md`; these are the package's own.
+the shared `r-package.md` rules; these are the package's own.
 
 ```sh
 R CMD INSTALL --preclean .              # when object files go stale
@@ -158,7 +156,7 @@ the package name is the namespace.
 - `coverage.yaml` calls `coverage.yml@v1`; `pkgdown.yaml` builds the site on
   pushes to `main`.
 
-**Deviations from `.claude/shared/ci.md`, as of 2026-11-11:** no workflow
+**Deviations from the shared `ci.md` rules, as of 2026-11-11:** no workflow
 calls `changes.yml`. `native-checks.yaml` skips prose-only changes with a
 `paths-ignore` list instead, and `R-CMD-check.yaml` deliberately has none,
 because `README.md` ships in the tarball and `--as-cran` checks its URLs.
