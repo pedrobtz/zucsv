@@ -173,6 +173,9 @@ weekly in zucsv's Saturday slot: R-CMD-check at 20:04 UTC, coverage at
   run opens, or comments on, an issue labelled `gctorture`. Dispatch it on
   the branch before merging a change to `PROTECT`s or the CHARSXP cache, and
   set its `cron` to daily while a release changes `src/`.
+- `assurance.yaml` calls `assurance.yml@v1` on every pull request, holding
+  `.agents/assurance.md` to the standard; each gap there names an issue
+  labelled `assurance`.
 - `coverage.yaml` calls `coverage.yml`, pinned to a commit because it holds a
   write token; the badge goes to `gh-pages`. `pkgdown.yaml` deploys the site
   on pushes to `main` and on releases.

@@ -1,0 +1,20 @@
+# Holds .agents/assurance.md to the portfolio standard (the shared
+# assurance.md rules): every required check is backed by a workflow, and
+# every gap names an issue. Seconds; runs on every pull request, because the
+# file it checks is Markdown that the docs gate would skip.
+on:
+  pull_request:
+  # No `push:`: a pull request already checks its merge with main, and a
+  # dispatch checks main's head (r-actions README, "Pushes to main").
+  workflow_dispatch:
+
+name: assurance
+
+permissions:
+  contents: read
+
+jobs:
+  assurance:
+    uses: pedrobtz/r-actions/.github/workflows/assurance.yml@v1
+    with:
+      ungated-jobs: fail
