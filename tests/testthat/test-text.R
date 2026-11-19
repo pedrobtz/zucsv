@@ -20,6 +20,17 @@ test_that("readLines() output reads back unchanged", {
   expect_identical(read_csv(text = readLines(path)), read_csv(path))
 })
 
+test_that("a quoted CR comes back from readLines() as LF (#42)", {
+  # readLines() ends a line at a lone CR and at CR LF; the join restores LF.
+  # The file route keeps the bytes (#24), so the two routes differ here, as
+  # ?read_csv says.
+  for (cell in c("x\r\ny", "x\ry")) {
+    path <- csv_file(paste0("a,b\n\"", cell, "\",2\n"))
+    expect_identical(read_csv(path)$a, cell)
+    expect_identical(read_csv(text = readLines(path))$a, "x\ny")
+  }
+})
+
 test_that("exactly one source is required", {
   path <- csv_file("a\n1\n")
   expect_error(read_csv(), "Supply either `file` or `text`")

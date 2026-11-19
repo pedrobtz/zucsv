@@ -24,7 +24,9 @@
 #'   under the default but `" NA"` is not.
 #' @param text The CSV itself, as a character vector, instead of a path. A
 #'   vector of several elements is joined with newlines, so each element is
-#'   one line --- `readLines()` output reads back unchanged. The string's
+#'   one line --- `readLines()` output reads back unchanged, except that a CR
+#'   inside a quoted field comes back as LF: `readLines()` ends a line at a
+#'   CR, and the join puts an LF there. The string's
 #'   declared encoding is honoured and converted to UTF-8, so a latin1 string
 #'   reads correctly where a latin1 *file* is still an error.
 #' @param col_types `NULL` to infer each column's type, or a character
