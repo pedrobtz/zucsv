@@ -41,10 +41,14 @@ exit criteria are; finish a stage's criteria before starting the next.
 
 0.1.0 is on CRAN, published 2026-10-16 from commit `1cc69d9` (the
 resubmission that named every `zsv` author in `Authors@R`). `main` is at
-`0.1.0.9000`, with a `# zucsv (development version)` heading in `NEWS.md`;
-record every user-visible change under it. The `0.1.0` tag (on `1cc69d9`)
-and its GitHub release were created on 2026-11-19. Tags are the bare
-version, `0.1.0`, not `v0.1.0`.
+`0.1.1`, the release commit, green on the full set and ready to submit
+from 2026-11-27 (#14). Until the `.9000` bump after submission, a
+user-visible change on `main` changes what is submitted, so hold it for
+0.1.2 or add it under `# zucsv 0.1.1` deliberately. The `0.1.0` tag (on `1cc69d9`)
+and its GitHub release were created by hand on 2026-11-19. From 0.1.1,
+`cran-release.yaml` tags and releases each submission when
+`CRAN-SUBMISSION` is committed. Tags are the bare version, `0.1.0`, not
+`v0.1.0`.
 
 ## Versions and dependents
 
@@ -176,6 +180,13 @@ weekly in zucsv's Saturday slot: R-CMD-check at 20:04 UTC, coverage at
 - `assurance.yaml` calls `assurance.yml@v1` on every pull request, holding
   `.agents/assurance.md` to the standard; each gap there names an issue
   labelled `assurance`.
+- `cran-release.yaml` calls `cran-release.yml`, pinned to a commit because
+  it holds a write token. It runs when a commit to `main` changes
+  `CRAN-SUBMISSION`: it tags the submitted commit with the bare version,
+  creates the GitHub release from `NEWS.md`, and opens the `.9000` bump
+  pull request, to merge only after CRAN accepts. `CRAN-SUBMISSION` is
+  committed after every `devtools::submit_cran()`; it is in `.Rbuildignore`,
+  never `.gitignore`.
 - `coverage.yaml` calls `coverage.yml`, pinned to a commit because it holds a
   write token; the badge goes to `gh-pages`. `pkgdown.yaml` deploys the site
   on pushes to `main` and on releases.
