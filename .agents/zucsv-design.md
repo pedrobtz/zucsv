@@ -637,15 +637,24 @@ truncated result from a genuine one. `zucsv` must detect both itself
   (65537) and errors when a record reports more than 65,536 cells
   (`CSV exceeds zucsv's maximum of 65536 columns`). The extra slot is what
   separates a file at the cap from one over it.
-- **Record size.** An oversize row is emitted as a record with **zero**
-  cells. Since even a blank line yields one cell, a zero-cell record is an
-  unambiguous overflow signal, and `zucsv` raises an error naming the record.
-  The limit is 8 MiB. It is not free to set this high: the parser sizes its
+- **Record size.** zsv has no status for a record that does not fit its
+  buffer. It calls `errprintf` with `"Warning: row %zu truncated"`, hands
+  over the cells that fit as a record, and parses the rest of the line as
+  further records. Only when the overflow falls inside the record's *first*
+  cell does that record arrive with **zero** cells. `zucsv`'s diagnostic
+  sink keeps that one message as a flag on the reader, and the record that
+  `zsv_next_row()` returns with the flag set is an error naming it, before
+  any of its cells is looked at (revised 2026-11-19, #28: the zero-cell
+  signal alone let an overflow in a later cell read as a short row plus an
+  invented one, or vanish). The zero-cell check stays as a backstop.
+  The limit is a record of at most 8,388,607 bytes (`ZUCSV_MAX_ROW_SIZE - 1`),
+  counting delimiters and quotes but not the terminator, on every terminator
+  and on both routes. It is not free to set this high: the parser sizes its
   scan buffer at twice `max_row_size` and `malloc`s it on every parse, so a
-  huge limit is a memory cost on every call, including on tiny files. 8 MiB
-  is 128x the upstream default of 64 KiB, covers any realistic row, and
-  leaves a 16 MiB buffer whose pages stay untouched unless rows really do
-  get that large.
+  huge limit is a memory cost on every call, including on tiny files.
+  `zucsv` passes `max_row_size` = 4 MiB, so the buffer is 8 MiB. That is 128x
+  the upstream default of 64 KiB, covers any realistic row, and its pages
+  stay untouched unless rows really do get that large.
 
 If real use cases require more, the limits can later become configurable.
 
@@ -1124,7 +1133,7 @@ Decisions taken in the 2026-09-12 revision that were open or unstated in the fir
 | 10 | Delimiter must be a single ASCII byte (§4) | Any single byte | Bytes >= 0x80 are never a whole character in UTF-8, so the restriction only removes inputs that could not have worked. |
 | 11 | A blank record is one unquoted zero-length cell (§10) | Any one-cell zero-length record | The parser reports per-cell quoting, so `""` on its own line stays distinguishable from a bare blank line. Decision #2's documented cost is smaller than it looked when it was taken. |
 | 12 | `max_columns` is set to the cap plus one (§15) | Set it to the cap | The parser truncates at `max_columns` silently, so a record reporting exactly the cap is ambiguous. One spare slot turns "at the limit" into "over the limit". |
-| 13 | A zero-cell record means an oversize row (§15) | Trust a parser status code | There is no status for it — the row is dropped silently. A blank line still yields one cell, so zero cells cannot arise any other way. |
+| 13 | zsv's truncation diagnostic means an oversize row (§15); revised 2026-11-19, #28 | Trust a parser status code; a zero-cell record alone | There is no status for it. A zero-cell record appears only when the first cell overflows; an overflow in a later cell arrives as a short record followed by the rest of the line, so the diagnostic is the only signal that covers every shape. |
 | 14 | `zucsv` installs a no-op `errprintf` (§16) | Leave `opts.errf` unset | Unset means `stderr`. Routing it to a no-op means no vendored code can write to the R session's stderr under any input, which is what CRAN's policy is about. |
 | 15 | Double conversion transcribes `R_strtod5()` and self-calibrates against `R_strtod()` at first use (§11) | Call `R_strtod()` per cell (46 ns); guess R's `LDOUBLE` type from a macro | The transcription is 2.5x faster (with two exactness shortcuts: uint64 digit accumulation while the running integer is exact in the accumulator, and a power-of-ten table filled by R's own loop) and was verified bit-identical on 8M inputs, shortcuts against verbatim loops for both accumulator types, but R exposes no macro for its `LDOUBLE` choice -- a typedef guess silently broke identity on the development machine and the parity test caught it. Probing `R_strtod()` once per session picks the right instance on any build, and the per-cell call remains as the fallback if neither matches. |
 | 16 | Pass 2 reuses the previous `CHARSXP` per column when the bytes match (§5) | Call `mkCharLenCE()` for every cell; a hash of recent values | Real categorical columns repeat: one `memcmp` beats hashing into R's global string cache, 24.1 → 8.0 ns/cell on KEN_ALL's prefecture column, 18% end to end on run-heavy data and ~2% cost when nothing repeats. A local hash table to catch non-adjacent repeats measured *worse* than both, so it was not built. The comparison is against the stored `CHARSXP`'s own bytes, never the previous cell's, which live in the parser's reused buffer. |

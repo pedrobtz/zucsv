@@ -71,6 +71,9 @@ single-column file, write an intentional empty cell as \code{""} --- a bare
 empty line is skipped.
 \item \strong{Every record must have the same width.} A mismatch is an error;
 short rows are not padded.
+\item \strong{A record may be at most 8,388,607 bytes}, counting delimiters and
+quotes but not its line terminator, and a file at most 65,536 columns.
+A record over either limit is an error naming it.
 \item \strong{Column names are kept exactly as they appear}, including duplicates
 and empty strings. No name repair is performed.
 \item \strong{Text must be valid UTF-8.} A byte sequence that is not, or an

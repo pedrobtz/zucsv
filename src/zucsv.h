@@ -83,6 +83,10 @@ typedef struct {
   const char *data;
   size_t len;
   size_t pos;
+  /* Set by the parser's diagnostic sink when zsv truncates a record that
+     does not fit its buffer (design SS15). zsv says so only through
+     errprintf, whichever cell overflowed. */
+  int truncated;
 } zucsv_reader;
 
 /* ------------------------------------------------------------------ *

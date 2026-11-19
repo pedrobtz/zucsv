@@ -18,10 +18,15 @@
  * ------------------------------------------------------------------ */
 
 /* Installed as opts.errprintf so no vendored code can write to the R
-   session's stderr, whatever the input. */
-static int zucsv_discard_diagnostics(void *ctx, const char *fmt, ...) {
-  (void)ctx;
-  (void)fmt;
+   session's stderr, whatever the input. Nothing is printed. The one message
+   that matters is kept as a flag: "Warning: row %zu truncated" is zsv's only
+   report that a record overflowed its buffer. It then hands over the cells
+   that fit as a record, and parses the rest of the line as further records,
+   so without the flag an oversize record becomes a short row or vanishes
+   (#28). Only zsv.c emits that message; the format is matched exactly. */
+static int zucsv_diagnostics(void *ctx, const char *fmt, ...) {
+  if (ctx && fmt && strcmp(fmt, "Warning: row %zu truncated\n") == 0)
+    ((zucsv_reader *)ctx)->truncated = 1;
   return 0;
 }
 
@@ -116,7 +121,9 @@ static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
     opts.read = zucsv_read_text;
     opts.stream = r;
   }
-  opts.errprintf = zucsv_discard_diagnostics;
+  opts.errprintf = zucsv_diagnostics;
+  opts.errf = r;
+  r->truncated = 0;
   opts.delimiter = delimiter;
   /* One more than the cap: zsv truncates silently at max_columns, so the
      spare slot is what lets a file over the cap be told from one at it
@@ -256,12 +263,21 @@ static void zucsv_check_forced(zucsv_type type, const struct zsv_cell *c, double
 /* Shape errors that apply to any record, checked before its width is known
    to be right. `record` is 1-based as the parser emits records, header
    included (design SS10). */
+/* A record zsv truncated is an error at that record, checked before any of
+   its cells is looked at: the cells it handed over are a prefix of the
+   record, and the records after it are the rest of the same line (#28). */
+static void zucsv_check_truncated(const zucsv_reader *r, double record) {
+  if (r->truncated)
+    Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
+             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
+}
+
 static void zucsv_check_shape(size_t n, double record) {
   /* A zero-cell record is how an oversize row reaches us: the parser drops
      it silently and reports nothing (design SS15). */
   if (n == 0)
     Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
-             (unsigned)ZUCSV_MAX_ROW_SIZE);
+             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
   if (n > (size_t)ZUCSV_MAX_COLS)
     Rf_error("CSV exceeds zucsv's maximum of %d columns", ZUCSV_MAX_COLS);
 }
@@ -362,6 +378,7 @@ static SEXP zucsv_read_body(void *data) {
 
     while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
       record += 1;
+      zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
@@ -455,6 +472,9 @@ static SEXP zucsv_read_body(void *data) {
         R_CheckUserInterrupt();
     }
 
+    /* A truncation reported with no record after it: the last record of
+       the input overflowed. */
+    zucsv_check_truncated(&ctx->reader, record + 1);
     zucsv_check_parse(status, ctx->path);
   }
 
@@ -570,6 +590,7 @@ static SEXP zucsv_read_body(void *data) {
 
     while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
       record += 1;
+      zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
@@ -634,6 +655,9 @@ static SEXP zucsv_read_body(void *data) {
         R_CheckUserInterrupt();
     }
 
+    /* A truncation reported with no record after it: the last record of
+       the input overflowed. */
+    zucsv_check_truncated(&ctx->reader, record + 1);
     zucsv_check_parse(status, ctx->path);
     /* Before concluding the file changed: a read error partway through ends
        the loop with a short table too, and "cannot read" is the truer

@@ -115,8 +115,24 @@ never an error from the parser — it surfaces as a row-width mismatch.
 
 Neither raises an error status. Both would otherwise lose data silently.
 
-**Oversize row → `n == 0`.** A row larger than the internal buffer is
-emitted as a record with *zero* cells:
+**Oversize row → a truncation diagnostic, and a record of any shape.** A
+row larger than the scan buffer (twice `max_row_size`) makes zsv call
+`errprintf(errf, "Warning: row %zu truncated\n", ...)` (`zsv.c`, two sites)
+and then:
+
+| Where the record overflows | What `zsv_next_row()` returns |
+|---|---|
+| inside its first cell | a record with `n == 0`, then the rest of the line as records |
+| inside a later cell | the cells that fit, then the rest of the line as records |
+| exactly at the buffer's end | nothing for that record: it vanishes |
+| one byte short of the end | a cell over bytes that are not input (read as an embedded NUL) |
+
+Measured 2026-11-19 for #28; the triggers are in
+`tests/testthat/test-record-limit.R`. Only the diagnostic covers every shape,
+so `zucsv`'s `errprintf` sink sets a flag on the reader and the record returned
+with it set is the §15 record-size error. The largest record that reads is
+8,388,607 bytes with `max_row_size` = 4 MiB: delimiters and quotes count,
+the terminator does not, whatever it is.
 
 | Input | Result |
 |---|---|
@@ -124,9 +140,8 @@ emitted as a record with *zero* cells:
 | 500 KB row, `buffsize` = 2 MB | record with `n=2`, 500001 bytes, intact |
 | 500 KB row, `max_row_size` = 1 MB | record with `n=2`, 500001 bytes, intact |
 
-`n == 0` is an unambiguous overflow signal: even a blank line yields `n == 1`.
-`zucsv` sets a generous `max_row_size` and treats `n == 0` as the §15
-record-size error.
+After a re-vendor, re-check that both truncation sites still call `errprintf`
+with exactly that format string: `zucsv` matches it byte for byte.
 
 **Too many columns → silent truncation at `max_columns`.** A 20-column row
 parsed with `max_columns = 19` yields `n = 19`, with no error and no way to
