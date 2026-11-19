@@ -9,8 +9,9 @@
  *
  * Define ZUCSV_ACC, ZUCSV_ACC_MANT_DIG and ZUCSV_STRTOD_NAME before
  * including; all are undefined again at the end. Define
- * ZUCSV_STRTOD_NO_FASTPATH to get R's loops verbatim, with no shortcuts --
- * the test harness compiles both and requires them to agree bit for bit.
+ * ZUCSV_STRTOD_NO_FASTPATH to get R's loops verbatim, with no shortcuts.
+ * convert.c builds both, and tests/testthat/test-strtod.R selects each
+ * through C_strtod_mode() and requires them to agree bit for bit (#36).
  *
  * `i` is the index just past any sign, and `sign` is +1/-1, both already
  * parsed by the caller, which has also dispatched Inf and NaN by name.

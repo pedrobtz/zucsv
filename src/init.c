@@ -9,6 +9,7 @@
 static const R_CallMethodDef call_methods[] = {
     {"C_read_csv", (DL_FUNC)&C_read_csv, 6},
     {"C_sniff_csv", (DL_FUNC)&C_sniff_csv, 4},
+    {"C_strtod_mode", (DL_FUNC)&C_strtod_mode, 1},
     {NULL, NULL, 0}
 };
 
