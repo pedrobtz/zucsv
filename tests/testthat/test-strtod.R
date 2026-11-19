@@ -11,7 +11,9 @@
 test_that("the calibrated converter agrees with as.numeric() bit for bit", {
   x <- strtod_inputs()
   expect_true(same_bits(read_as_double(x), as.numeric(x)))
-  expect_true(.Call(zucsv:::C_strtod_mode, NULL) %in% 0:2)
+  # 3 is the verbatim long double instance, chosen where long double has
+  # fewer bits at run time than LDBL_MANT_DIG claims (valgrind)
+  expect_true(.Call(zucsv:::C_strtod_mode, NULL) %in% 0:3)
 })
 
 test_that("the R_strtod fallback agrees with as.numeric(), long cells included", {
@@ -27,10 +29,16 @@ test_that("each fast instance agrees with R's verbatim loops (#36)", {
   ld_verbatim <- with_strtod_mode(3L, read_as_double(x))
   d <- with_strtod_mode(0L, read_as_double(x))
   d_verbatim <- with_strtod_mode(4L, read_as_double(x))
-  expect_true(same_bits(ld, ld_verbatim))
+  # The long double shortcuts assume LDBL_MANT_DIG bits. Where long double
+  # has fewer at run time, calibration picks the verbatim instance (mode 3)
+  # instead, and the fast one is not expected to agree.
+  if (.Call(zucsv:::C_strtod_mode, NULL) != 3L) {
+    expect_true(same_bits(ld, ld_verbatim))
+  }
   expect_true(same_bits(d, d_verbatim))
-  # and whichever accumulator matches this R is the one in use
-  expect_true(same_bits(ld, as.numeric(x)) || same_bits(d, as.numeric(x)))
+  # and whichever instance this R matches is the one in use
+  expect_true(same_bits(ld, as.numeric(x)) || same_bits(ld_verbatim, as.numeric(x)) ||
+                same_bits(d, as.numeric(x)))
 })
 
 test_that("the mode hook rejects anything but a mode", {

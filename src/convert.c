@@ -317,6 +317,22 @@ static const char *const zucsv_probes[] = {
    nothing but the length of this list. Forcing one out-of-line call site
    here keeps the decision about the hot path independent of how many
    probes we choose to have. */
+/* The mantissa width long double has at run time: the number of bits for
+   which 1 + 2^-(bits - 1) is still above 1. volatile keeps the compiler from
+   folding it to LDBL_MANT_DIG. */
+static int zucsv_ldouble_mant_dig(void) {
+  volatile long double one = 1.0L, eps = 1.0L, sum;
+  int digits = 1;
+  for (;;) {
+    eps /= 2.0L;
+    sum = one + eps;
+    if (sum == one || digits > 128)
+      break;
+    digits++;
+  }
+  return digits;
+}
+
 void zucsv_numeric_init(void) {
 
   zucsv_strtod_ldouble_fill();
@@ -331,11 +347,21 @@ void zucsv_numeric_init(void) {
      measured 0.141s -> 0.201s on a 2M-cell numeric file with 15 probes
      against 7: the loop gets unrolled, a copy of the converter is inlined
      per probe, and the inlining budget for zucsv_as_double() is spent. */
+  /* The candidates, in order of speed. The long double fast instance is a
+     candidate only when long double really carries LDBL_MANT_DIG bits at run
+     time: its shortcuts assume it (strtod_body.h), and an emulator may
+     compute long double in double precision while LDBL_MANT_DIG still says
+     64. valgrind does, and there the fast instance agreed with every probe
+     yet not with as.numeric() on random input. R's own R_strtod runs under
+     the same emulation, so the verbatim instance still matches it. */
   const size_t nprobe = sizeof(zucsv_probes) / sizeof(*zucsv_probes);
-  int ok_ld = 1, ok_d = 1;
+  const int candidates[] = {ZUCSV_STRTOD_LDOUBLE, ZUCSV_STRTOD_LDOUBLE_VERBATIM, ZUCSV_STRTOD_DOUBLE};
+  const int ld_exact = zucsv_ldouble_mant_dig() >= LDBL_MANT_DIG;
 
-  for (int mode = 0; mode < 2; mode++) {
-    zucsv_strtod_mode = mode ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_LDOUBLE;
+  for (size_t c = 0; c < sizeof(candidates) / sizeof(*candidates); c++) {
+    if (candidates[c] == ZUCSV_STRTOD_LDOUBLE && !ld_exact)
+      continue;
+    zucsv_strtod_mode = candidates[c];
     int ok = 1;
     for (size_t p = 0; p < nprobe; p++) {
       char *end;
@@ -343,13 +369,10 @@ void zucsv_numeric_init(void) {
       double got = zucsv_as_double((const unsigned char *)zucsv_probes[p], strlen(zucsv_probes[p]));
       ok = ok && zucsv_same_bits(r, got);
     }
-    if (mode)
-      ok_d = ok;
-    else
-      ok_ld = ok;
+    if (ok)
+      return;
   }
-
-  zucsv_strtod_mode = ok_ld ? ZUCSV_STRTOD_LDOUBLE : ok_d ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_CALL;
+  zucsv_strtod_mode = ZUCSV_STRTOD_CALL;
 }
 
 double zucsv_as_double(const unsigned char *s, size_t n) {
