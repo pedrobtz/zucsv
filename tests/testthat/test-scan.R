@@ -43,6 +43,7 @@ test_that("scan cost does not grow with the distance between tokens (#31)", {
   }
   short <- make(1024L)
   long <- make(65536L)
+  on.exit(unlink(c(short, long)), add = TRUE)
   time <- function(path) {
     min(vapply(1:3, function(i) system.time(sniff_csv(path))[["elapsed"]], 0))
   }

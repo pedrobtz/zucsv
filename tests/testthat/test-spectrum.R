@@ -9,17 +9,7 @@
 # not survive being copied into this repo.
 #
 # 11 of 12 fixtures. location_coordinates is excluded; see the generator.
-
-spectrum_case <- function(bytes, expected) {
-  path <- tempfile(fileext = ".csv")
-  con <- file(path, "wb"); writeBin(bytes, con); close(con)
-  got <- read_csv(path, col_types = "character", na = NULL)
-  expect_identical(names(got), names(expected))
-  expect_identical(nrow(got), nrow(expected))
-  for (j in seq_along(expected)) {
-    expect_identical(got[[j]], expected[[j]], info = names(expected)[j])
-  }
-}
+# spectrum_case() is in helper-spectrum.R, so the suite runs shuffled (#29).
 
 test_that("csv-spectrum: comma_in_quotes", {
   spectrum_case(
