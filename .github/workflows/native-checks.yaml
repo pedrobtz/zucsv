@@ -5,23 +5,17 @@
 # C, holds a FILE * and a parser across R error and interrupt paths, and
 # caches SEXPs across allocating calls.
 #
-# paths-ignore skips the whole workflow for prose-only changes. These jobs
-# compile the package and run the suite, so nothing they can observe lives in
-# a .md file, a pkgdown article or .agents/. GitHub applies it only when every
-# changed file matches, so a commit touching both an article and src/ still
-# runs. R-CMD-check.yaml is deliberately left alone: README.md ships in the
-# tarball and --as-cran checks the URLs in it, which is a real check on a
-# prose-only change.
+# A documentation-only pull request skips every job: the reusable workflows
+# classify the changed files themselves, so there is no paths-ignore list.
 on:
-  # No `push:`: a pull request already checks its merge with main,
-  # and the schedule checks main (r-actions README, "Pushes to main").
+  # No `push:`: a pull request already checks its merge with main, and the
+  # schedule checks main, skipping a commit it has already checked (r-actions
+  # README, "Pushes to main").
+  # `labeled`/`unlabeled` so that adding or removing a CI label reruns it.
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'vignettes/**'
-      - '_pkgdown.yml'
-      - '.agents/**'
-      - 'docs/**'
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  # The full set runs weekly and on demand:
+  # `gh workflow run native-checks.yaml --ref main`.
   schedule:
     - cron: "14 20 * * 6"
   workflow_dispatch:
@@ -30,6 +24,16 @@ name: native-checks
 
 permissions: read-all
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+# `profile: auto` goes to the three workflows it changes: quick on a pull
+# request skips the ASan containers, valgrind and cran-special; the schedule,
+# a dispatch and the `full-ci` label run them. lto and rchk take minutes
+# either way and run on every pull request. gctorture has its own caller,
+# gctorture.yaml, with step 20 on a schedule. Each job is skipped without a
+# runner under the CI labels (ci.md, Labels).
 jobs:
   # The guard on the vendored parser: a pull request that changes anything
   # under src/vendor must also change src/vendor/zsv/UPSTREAM, which
@@ -38,6 +42,12 @@ jobs:
   # what catches a hand edit nobody can reproduce. There is no
   # tools/vendor/verify, so the tree-verification step skips itself.
   vendor:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:vendor'))
     uses: pedrobtz/r-actions/.github/workflows/vendor.yml@v1
     with:
       vendor-dir: src/vendor
@@ -45,11 +55,19 @@ jobs:
 
   # asan: true adds the AddressSanitizer job in the R-hub containers, where R
   # is itself an ASan build. That is the leak detection macOS cannot do, and
-  # SS16's cleanup discipline is what most needs it.
+  # SS16's cleanup discipline is what most needs it. Full profile only; a
+  # pull request runs UBSan.
   sanitizers:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:sanitizers'))
     uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
     with:
       asan: true
+      profile: auto
 
   # --leak-check=full because R's own --use-valgrind does not set it, so a
   # "definitely lost" total arrives with no stack and cannot be attributed
@@ -58,33 +76,54 @@ jobs:
   # R_UnwindProtect -- and a total with no stack is exactly what would not
   # find that. "possibly lost" stays out of the error kinds: for an embedded
   # R that is mostly the interpreter holding interior pointers into its own
-  # allocations.
+  # allocations. Full profile only.
   valgrind:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:valgrind'))
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
     with:
+      profile: auto
       valgrind-opts: >-
         --leak-check=full
         --show-leak-kinds=definite,indirect
         --errors-for-leak-kinds=definite,indirect
 
   lto:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:lto'))
     uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
-
-  gctorture:
-    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@v1
 
   # Fail on findings rather than leaving the artifact to be read: the package
   # is at zero now, so the next finding is a regression, and a warning nobody
   # opens is not how you learn about it.
   rchk:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:rchk'))
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
     with:
       fail-on-findings: true
 
   # CRAN's rcnst, rlibro and vnu checks -- the "Additional issues" nothing
-  # above reproduces. Full runs only: `quick`, which skips all three, on
-  # pull requests; full on every other event.
+  # above reproduces. Full profile only.
   cran-special:
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'ci:minimal')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:cran-special'))
     uses: pedrobtz/r-actions/.github/workflows/cran-special.yml@v1
     with:
-      profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
+      profile: auto
