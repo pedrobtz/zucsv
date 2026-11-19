@@ -25,6 +25,15 @@ test_that("inferred types and values agree on ordinary input", {
 })
 
 test_that("a write.csv round trip returns the original data frame", {
+  # Seed without leaving the session's RNG changed for later tests (#37);
+  # withr is not in Suggests (design SS21).
+  had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  if (had_seed) old_seed <- get(".Random.seed", envir = globalenv())
+  on.exit(
+    if (had_seed) assign(".Random.seed", old_seed, envir = globalenv())
+    else rm(".Random.seed", envir = globalenv()),
+    add = TRUE
+  )
   set.seed(20260912)
   n <- 300
   df <- data.frame(
