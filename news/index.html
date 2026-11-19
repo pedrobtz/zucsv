@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">zucsv</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -38,16 +38,26 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="zucsv-development-version">zucsv (development version)<a class="anchor" aria-label="anchor" href="#zucsv-development-version"></a></h2>
-<ul><li><p><code>text =</code> keeps non-ASCII characters in a session whose locale is not UTF-8. Before, in a C locale, <code>"\u00e9"</code> read as the four characters <code>&lt;e9&gt;</code>, with no error (<a href="https://github.com/pedrobtz/zucsv/issues/57" class="external-link">#57</a>).</p></li>
-<li><p>A one-byte delimiter that is not ASCII, such as a latin1 <code>"\xe9"</code>, is now rejected with “<code>delimiter</code> must be a single ASCII byte.” instead of R’s “missing value where TRUE/FALSE needed” (<a href="https://github.com/pedrobtz/zucsv/issues/48" class="external-link">#48</a>).</p></li>
-<li><p><code><a href="../reference/read_csv.html">?read_csv</a></code> now says that a CR inside a quoted field comes back as LF when the file is read through <code>text = readLines(path)</code> (<a href="https://github.com/pedrobtz/zucsv/issues/42" class="external-link">#42</a>).</p></li>
-<li><p>Files with long cells read in linear time. The bundled parser rescanned the run before every token, so reading 50 rows of 64 KiB cells took 4.5 s; it now takes 0.02 s (<a href="https://github.com/pedrobtz/zucsv/issues/31" class="external-link">#31</a>). A long read also checks for an interrupt at least every 64 MiB, not only every 16,384 records.</p></li>
-<li><p>A quote that is never closed is now an error naming the row and column where it opened. Before, a quote opened in the last column took the rest of the file into one cell, with no error (<a href="https://github.com/pedrobtz/zucsv/issues/30" class="external-link">#30</a>). Earlier columns gave a row-width error, which now names the real cause.</p></li>
-<li><p>A quoted last cell holding an escaped quote (<code>""</code>) now reads correctly when the file has no final newline. Before, it kept its closing quote: <code>"x"""</code> read as <code>x""</code> instead of <code>x"</code> (<a href="https://github.com/pedrobtz/zucsv/issues/45" class="external-link">#45</a>).</p></li>
-<li><p>A record longer than the 8,388,607-byte limit is now always an error naming the record. Before, only an overflow inside the record’s first cell was caught. An overflow in a later cell read as a short row followed by an invented one, made the record vanish, or reported an embedded NUL the file did not have (<a href="https://github.com/pedrobtz/zucsv/issues/28" class="external-link">#28</a>). <code><a href="../reference/read_csv.html">?read_csv</a></code> now states both limits.</p></li>
-<li><p>The <code><a href="../reference/read_csv.html">read_csv()</a></code> documentation no longer claims that a CR LF pair inside a quoted field is normalised to LF. It never was: bytes inside a quoted field are kept as they are, CR included, and now a test pins that for CRLF files and for <code>text</code> as well (<a href="https://github.com/pedrobtz/zucsv/issues/24" class="external-link">#24</a>).</p></li>
+<h2 class="pkg-version" data-toc-text="0.1.1" id="zucsv-011">zucsv 0.1.1<a class="anchor" aria-label="anchor" href="#zucsv-011"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-0-1-1">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-1"></a></h3>
+<p>Several inputs read as a wrong table with no error. Each is now read correctly or reported:</p>
+<ul><li><p>A record longer than the 8,388,607-byte limit is always an error naming the record. Before, only an overflow inside the record’s first cell was caught. An overflow in a later cell read as a short row followed by an invented one, made the record vanish, or reported an embedded NUL the file did not have (<a href="https://github.com/pedrobtz/zucsv/issues/28" class="external-link">#28</a>).</p></li>
+<li><p>A quote that is never closed is an error naming the row and column where it opened. Before, a quote opened in the last column took the rest of the file into one cell (<a href="https://github.com/pedrobtz/zucsv/issues/30" class="external-link">#30</a>). In an earlier column it gave a row-width error, which now names the real cause.</p></li>
+<li><p>A quoted last cell holding an escaped quote (<code>""</code>) reads correctly when the file has no final newline. Before, it kept its closing quote: <code>"x"""</code> read as <code>x""</code> instead of <code>x"</code> (<a href="https://github.com/pedrobtz/zucsv/issues/45" class="external-link">#45</a>).</p></li>
+<li><p><code>text =</code> keeps non-ASCII characters in a session whose locale is not UTF-8, <code><a href="https://rdrr.io/r/base/readLines.html" class="external-link">readLines()</a></code> output included. Before, in a C locale, <code>"\u00e9"</code> read as the characters <code>&lt;c3&gt;&lt;a9&gt;</code> or <code>&lt;e9&gt;</code>, with no error. Unmarked strings are now taken as UTF-8 bytes there, as a file’s bytes are, so bytes that are not UTF-8 are an error (<a href="https://github.com/pedrobtz/zucsv/issues/57" class="external-link">#57</a>, <a href="https://github.com/pedrobtz/zucsv/issues/60" class="external-link">#60</a>).</p></li>
+<li><p>A one-byte delimiter that is not ASCII, such as a latin1 <code>"\xe9"</code>, is rejected with “<code>delimiter</code> must be a single ASCII byte.” instead of R’s “missing value where TRUE/FALSE needed” (<a href="https://github.com/pedrobtz/zucsv/issues/48" class="external-link">#48</a>).</p></li>
 </ul></div>
+<div class="section level3">
+<h3 id="performance-0-1-1">Performance<a class="anchor" aria-label="anchor" href="#performance-0-1-1"></a></h3>
+<ul><li>Files with long cells read in linear time. The bundled parser rescanned the run before every token, so 50 rows of 64 KiB cells took 4.5 s; they now take 0.02 s (<a href="https://github.com/pedrobtz/zucsv/issues/31" class="external-link">#31</a>). A long read also checks for an interrupt at least every 64 MiB, not only every 16,384 records.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="documentation-0-1-1">Documentation<a class="anchor" aria-label="anchor" href="#documentation-0-1-1"></a></h3>
+<ul><li><p><code><a href="../reference/read_csv.html">?read_csv</a></code> states the record and column limits (<a href="https://github.com/pedrobtz/zucsv/issues/28" class="external-link">#28</a>).</p></li>
+<li><p><code><a href="../reference/read_csv.html">?read_csv</a></code> no longer claims that a CR LF pair inside a quoted field is normalised to LF. It never was: bytes inside a quoted field are kept as they are, CR included (<a href="https://github.com/pedrobtz/zucsv/issues/24" class="external-link">#24</a>). Read through <code>text = readLines(path)</code>, such a CR comes back as LF, and <code><a href="../reference/read_csv.html">?read_csv</a></code> now says so (<a href="https://github.com/pedrobtz/zucsv/issues/42" class="external-link">#42</a>).</p></li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.0" id="zucsv-010">zucsv 0.1.0<a class="anchor" aria-label="anchor" href="#zucsv-010"></a></h2><p class="text-muted">CRAN release: 2026-10-16</p>
 <p>First release.</p>

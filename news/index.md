@@ -1,56 +1,65 @@
 # Changelog
 
-## zucsv (development version)
+## zucsv 0.1.1
 
-- `text =` keeps non-ASCII characters in a session whose locale is not
-  UTF-8. Before, in a C locale, `"\u00e9"` read as the four characters
-  `<e9>`, with no error
-  ([\#57](https://github.com/pedrobtz/zucsv/issues/57)).
+### Bug fixes
 
-- A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is
-  now rejected with “`delimiter` must be a single ASCII byte.” instead
-  of R’s “missing value where TRUE/FALSE needed”
-  ([\#48](https://github.com/pedrobtz/zucsv/issues/48)).
+Several inputs read as a wrong table with no error. Each is now read
+correctly or reported:
 
-- [`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
-  now says that a CR inside a quoted field comes back as LF when the
-  file is read through `text = readLines(path)`
-  ([\#42](https://github.com/pedrobtz/zucsv/issues/42)).
-
-- Files with long cells read in linear time. The bundled parser
-  rescanned the run before every token, so reading 50 rows of 64 KiB
-  cells took 4.5 s; it now takes 0.02 s
-  ([\#31](https://github.com/pedrobtz/zucsv/issues/31)). A long read
-  also checks for an interrupt at least every 64 MiB, not only every
-  16,384 records.
-
-- A quote that is never closed is now an error naming the row and column
-  where it opened. Before, a quote opened in the last column took the
-  rest of the file into one cell, with no error
-  ([\#30](https://github.com/pedrobtz/zucsv/issues/30)). Earlier columns
-  gave a row-width error, which now names the real cause.
-
-- A quoted last cell holding an escaped quote (`""`) now reads correctly
-  when the file has no final newline. Before, it kept its closing quote:
-  `"x"""` read as `x""` instead of `x"`
-  ([\#45](https://github.com/pedrobtz/zucsv/issues/45)).
-
-- A record longer than the 8,388,607-byte limit is now always an error
+- A record longer than the 8,388,607-byte limit is always an error
   naming the record. Before, only an overflow inside the record’s first
   cell was caught. An overflow in a later cell read as a short row
   followed by an invented one, made the record vanish, or reported an
   embedded NUL the file did not have
   ([\#28](https://github.com/pedrobtz/zucsv/issues/28)).
-  [`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
-  now states both limits.
 
-- The
-  [`read_csv()`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
-  documentation no longer claims that a CR LF pair inside a quoted field
-  is normalised to LF. It never was: bytes inside a quoted field are
-  kept as they are, CR included, and now a test pins that for CRLF files
-  and for `text` as well
-  ([\#24](https://github.com/pedrobtz/zucsv/issues/24)).
+- A quote that is never closed is an error naming the row and column
+  where it opened. Before, a quote opened in the last column took the
+  rest of the file into one cell
+  ([\#30](https://github.com/pedrobtz/zucsv/issues/30)). In an earlier
+  column it gave a row-width error, which now names the real cause.
+
+- A quoted last cell holding an escaped quote (`""`) reads correctly
+  when the file has no final newline. Before, it kept its closing quote:
+  `"x"""` read as `x""` instead of `x"`
+  ([\#45](https://github.com/pedrobtz/zucsv/issues/45)).
+
+- `text =` keeps non-ASCII characters in a session whose locale is not
+  UTF-8, [`readLines()`](https://rdrr.io/r/base/readLines.html) output
+  included. Before, in a C locale, `"\u00e9"` read as the characters
+  `<c3><a9>` or `<e9>`, with no error. Unmarked strings are now taken as
+  UTF-8 bytes there, as a file’s bytes are, so bytes that are not UTF-8
+  are an error ([\#57](https://github.com/pedrobtz/zucsv/issues/57),
+  [\#60](https://github.com/pedrobtz/zucsv/issues/60)).
+
+- A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is
+  rejected with “`delimiter` must be a single ASCII byte.” instead of
+  R’s “missing value where TRUE/FALSE needed”
+  ([\#48](https://github.com/pedrobtz/zucsv/issues/48)).
+
+### Performance
+
+- Files with long cells read in linear time. The bundled parser
+  rescanned the run before every token, so 50 rows of 64 KiB cells took
+  4.5 s; they now take 0.02 s
+  ([\#31](https://github.com/pedrobtz/zucsv/issues/31)). A long read
+  also checks for an interrupt at least every 64 MiB, not only every
+  16,384 records.
+
+### Documentation
+
+- [`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
+  states the record and column limits
+  ([\#28](https://github.com/pedrobtz/zucsv/issues/28)).
+
+- [`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
+  no longer claims that a CR LF pair inside a quoted field is normalised
+  to LF. It never was: bytes inside a quoted field are kept as they are,
+  CR included ([\#24](https://github.com/pedrobtz/zucsv/issues/24)).
+  Read through `text = readLines(path)`, such a CR comes back as LF, and
+  [`?read_csv`](https://pedrobtz.github.io/zucsv/reference/read_csv.md)
+  now says so ([\#42](https://github.com/pedrobtz/zucsv/issues/42)).
 
 ## zucsv 0.1.0
 
