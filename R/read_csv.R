@@ -48,7 +48,9 @@
 #' * **Text must be valid UTF-8.** A byte sequence that is not, or an
 #'   embedded NUL, is an error rather than something passed through to fail
 #'   later. A UTF-8 BOM is ignored.
-#' * A CR LF pair inside a quoted field is normalised to a single LF.
+#' * **Bytes inside a quoted field are kept as they are.** A CR LF pair or a
+#'   lone CR in a quoted field stays in the cell, whatever line ending the
+#'   file uses; only the record terminator is removed.
 #' * **`header = NA` looks at the first record only**, and at nothing else:
 #'   not the rest of the file, not `col_types`, and not `na`. It therefore
 #'   reaches a different verdict from `data.table::fread()` and DuckDB, which

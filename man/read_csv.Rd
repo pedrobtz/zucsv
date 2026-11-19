@@ -76,7 +76,9 @@ and empty strings. No name repair is performed.
 \item \strong{Text must be valid UTF-8.} A byte sequence that is not, or an
 embedded NUL, is an error rather than something passed through to fail
 later. A UTF-8 BOM is ignored.
-\item A CR LF pair inside a quoted field is normalised to a single LF.
+\item \strong{Bytes inside a quoted field are kept as they are.} A CR LF pair or a
+lone CR in a quoted field stays in the cell, whatever line ending the
+file uses; only the record terminator is removed.
 \item \strong{\code{header = NA} looks at the first record only}, and at nothing else:
 not the rest of the file, not \code{col_types}, and not \code{na}. It therefore
 reaches a different verdict from \code{data.table::fread()} and DuckDB, which

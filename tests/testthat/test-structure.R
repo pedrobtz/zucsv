@@ -43,6 +43,21 @@ test_that("quoting is handled by the parser", {
   expect_identical(read_text("a\n\"x\ry\"\n")$a, "x\ry")
 })
 
+test_that("a quoted CR LF is kept whatever the line ending and the route (#24)", {
+  # The documentation once claimed a quoted CR LF became LF. Pin the kept
+  # bytes on a CRLF file, without a final terminator, and through `text`.
+  for (txt in c(
+    "a,b\r\n\"x\r\ny\",2\r\n",
+    "a,b\r\n\"x\r\ny\",2",
+    "a,b\n\"x\r\ny\",2\r\n"
+  )) {
+    expect_identical(read_text(txt)$a, "x\r\ny")
+    expect_identical(read_csv(text = txt)$a, "x\r\ny")
+  }
+  expect_identical(read_text("a\r\n\"x\ry\"\r\n")$a, "x\ry")
+  expect_identical(read_csv(text = "a\r\n\"x\ry\"\r\n")$a, "x\ry")
+})
+
 test_that("a trailing delimiter produces a final empty field", {
   df <- read_text("a,b,\n1,2,\n")
   expect_identical(ncol(df), 3L)

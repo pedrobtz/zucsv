@@ -1,5 +1,10 @@
 # zucsv (development version)
 
+* The `read_csv()` documentation no longer claims that a CR LF pair inside a
+  quoted field is normalised to LF. It never was: bytes inside a quoted field
+  are kept as they are, CR included, and now a test pins that for CRLF files
+  and for `text` as well (#24).
+
 # zucsv 0.1.0
 
 First release.
