@@ -1,5 +1,9 @@
 # zucsv (development version)
 
+* A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is now
+  rejected with "`delimiter` must be a single ASCII byte." instead of R's
+  "missing value where TRUE/FALSE needed" (#48).
+
 * `?read_csv` now says that a CR inside a quoted field comes back as LF when
   the file is read through `text = readLines(path)` (#42).
 

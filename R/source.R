@@ -30,3 +30,36 @@ zucsv_source <- function(file, text) {
   }
   list(file = file, text = NULL)
 }
+
+# read_csv() and sniff_csv() validate delimiter and na alike; one copy, so a
+# fix reaches both (#48). The C side re-checks for native safety (design SS7).
+zucsv_check_delimiter <- function(delimiter) {
+  if (!is.character(delimiter) || length(delimiter) != 1L || is.na(delimiter)) {
+    stop("`delimiter` must be a single character.", call. = FALSE)
+  }
+  # Bytes, not characters: utf8ToInt() is NA for a string that is not UTF-8,
+  # so a one-byte latin1 delimiter once failed with R's own message.
+  bytes <- charToRaw(delimiter)
+  if (length(bytes) != 1L || as.integer(bytes) > 127L) {
+    stop("`delimiter` must be a single ASCII byte.", call. = FALSE)
+  }
+  if (delimiter %in% c("\n", "\r", "\f", "\"")) {
+    stop(
+      "`delimiter` may not be a newline, carriage return, form feed or quote.",
+      call. = FALSE
+    )
+  }
+  invisible(delimiter)
+}
+
+zucsv_check_na <- function(na) {
+  if (!is.null(na)) {
+    if (!is.character(na)) {
+      stop("`na` must be a character vector or NULL.", call. = FALSE)
+    }
+    if (anyNA(na)) {
+      stop("`na` may not contain NA.", call. = FALSE)
+    }
+  }
+  invisible(na)
+}
