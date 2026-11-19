@@ -27,7 +27,8 @@ handles the new errors for malformed input as it handles the existing ones.
 
 * local macOS 15.7, R 4.6.2
 * GitHub Actions (pedrobtz/r-actions@v1): macOS, Windows and Ubuntu on R
-  release; Ubuntu on oldrel-1
+  release; Windows on R-devel; Ubuntu on oldrel-1; and CRAN's noSuggests and
+  noLD flavours
 * GitHub Actions, in the R-hub containers built to match CRAN's r-devel Linux
   flavors -- clang23, ubuntu-clang and ubuntu-gcc16 -- compiled as CRAN
   compiles them, with `CC += -std=gnu23` and `CFLAGS += -pedantic`

@@ -51,3 +51,17 @@ jobs:
       # Full on the weekly schedule, on a dispatch, and on a pull request
       # labelled `full-ci`.
       profile: auto
+      # CRAN's noSuggests and noLD flavours, in the full profile: nothing in
+      # Suggests installed, and no long double, which the strtod calibration
+      # must then do without (design decision 15).
+      nosuggests: true
+      nold: true
+      # r-actions' default runners, plus Windows on R-devel: CRAN checks
+      # Windows on R-devel and nothing else in CI does (the containers are
+      # Linux). Runs in the full profile only.
+      runners: >-
+        [{"os": "macos-latest", "r": "release"},
+         {"os": "windows-latest", "r": "release"},
+         {"os": "windows-latest", "r": "devel"},
+         {"os": "ubuntu-latest", "r": "release"},
+         {"os": "ubuntu-latest", "r": "oldrel-1"}]
