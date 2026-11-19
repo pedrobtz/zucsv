@@ -1,5 +1,9 @@
 # zucsv (development version)
 
+* `text =` keeps non-ASCII characters in a session whose locale is not UTF-8.
+  Before, in a C locale, `"\u00e9"` read as the four characters `<e9>`, with
+  no error (#57).
+
 * A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is now
   rejected with "`delimiter` must be a single ASCII byte." instead of R's
   "missing value where TRUE/FALSE needed" (#48).

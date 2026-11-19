@@ -131,3 +131,23 @@ test_that("a string is read twice without being consumed", {
   expect_identical(read_csv(text = csv), read_csv(text = csv))
   expect_identical(nrow(read_csv(text = csv)), 3L)
 })
+
+test_that("non-ASCII text = input survives a C locale (#57)", {
+  # paste() converts to the native encoding, which in a C locale cannot hold
+  # e-acute: it became the four bytes "<e9>", read as the cell's value.
+  skip_on_os("windows")
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  if (Sys.setlocale("LC_CTYPE", "C") == "") skip("cannot set LC_CTYPE to C")
+  expect_false(l10n_info()[["UTF-8"]])
+
+  latin1 <- rawToChar(as.raw(c(0x61, 0x2C, 0x62, 0x0A, 0x31, 0x2C, 0xE9)))
+  Encoding(latin1) <- "latin1"
+  utf8 <- "a,b\n1,\u00e9"
+  for (x in list(latin1, utf8, c("a,b", "1,\u00e9"))) {
+    b <- read_csv(text = x)$b
+    expect_identical(charToRaw(b), as.raw(c(0xC3, 0xA9)))
+    expect_identical(Encoding(b), "UTF-8")
+    expect_identical(sniff_csv(text = x)$nrow, 1L)
+  }
+})

@@ -16,7 +16,10 @@ zucsv_source <- function(file, text) {
       stop("`text` must be a character vector with no missing values.",
            call. = FALSE)
     }
-    return(list(file = NULL, text = paste(text, collapse = "\n")))
+    # UTF-8 first: paste() converts to the native encoding, and in a C locale
+    # that turned a non-ASCII character into an escape such as "<e9>" (#57).
+    # Given UTF-8, it keeps UTF-8. C translates the result once more.
+    return(list(file = NULL, text = paste(enc2utf8(text), collapse = "\n")))
   }
 
   if (!is.character(file) || length(file) != 1L || is.na(file)) {

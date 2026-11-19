@@ -42,6 +42,8 @@ test_that("an embedded NUL is an error naming the location", {
 })
 
 test_that("a path with non-ASCII characters reads", {
+  # The name must be representable in the session's locale.
+  skip_if_not(l10n_info()[["UTF-8"]], "not a UTF-8 locale")
   dir <- file.path(tempdir(), "zucsv-\u00e9\u00e0")
   dir.create(dir, showWarnings = FALSE)
   on.exit(unlink(dir, recursive = TRUE), add = TRUE)
