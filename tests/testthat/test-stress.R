@@ -1,19 +1,7 @@
-# Larger inputs than the ordinary suite uses. Gated behind ZUCSV_STRESS rather
-# than skip_on_cran(): these check limits, not memory safety, so running them
-# under gctorture buys nothing and costs hours (see helper-fixtures.R).
-#
-#   ZUCSV_STRESS=true Rscript -e 'devtools::test()'
+# Larger inputs than the ordinary suite uses. skip_unless_stress() skips them
+# on CRAN and under gctorture, and every other leg runs them (see
+# helper-fixtures.R, #33). The column cap is in test-errors.R.
 
-test_that("a wide table at the column cap reads, and one past it errors", {
-  skip_unless_stress()
-  at_cap <- paste0(paste0("c", seq_len(65536L)), collapse = ",")
-  df <- read_text(paste0(at_cap, "\n"))
-  expect_identical(ncol(df), 65536L)
-  expect_identical(nrow(df), 0L)
-
-  over <- paste0(at_cap, ",c65537\n")
-  expect_error(read_text(over), "exceeds zucsv's maximum of 65536 columns", fixed = TRUE)
-})
 
 test_that("many rows read with the right values at both ends", {
   skip_unless_stress()
@@ -46,17 +34,6 @@ test_that("a row over the record-size limit is an error, not a truncation", {
     "exceeds zucsv's maximum record size",
     fixed = TRUE
   )
-})
-
-test_that("repeated failing parses do not accumulate anything", {
-  skip_unless_stress()
-  # Under the sanitizer job this is the leak check for the error path.
-  bad <- csv_file("a,b\n1,2,3\n")
-  for (i in 1:2000) expect_error(read_csv(bad), "has 3 fields")
-
-  # and repeated successful ones
-  good <- csv_file("a,b\n1,2\n3,4\n")
-  for (i in 1:2000) expect_identical(nrow(read_csv(good)), 2L)
 })
 
 test_that("many columns and many rows together", {

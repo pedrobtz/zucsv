@@ -24,7 +24,9 @@
 #'   under the default but `" NA"` is not.
 #' @param text The CSV itself, as a character vector, instead of a path. A
 #'   vector of several elements is joined with newlines, so each element is
-#'   one line --- `readLines()` output reads back unchanged. The string's
+#'   one line --- `readLines()` output reads back unchanged, except that a CR
+#'   inside a quoted field comes back as LF: `readLines()` ends a line at a
+#'   CR, and the join puts an LF there. The string's
 #'   declared encoding is honoured and converted to UTF-8, so a latin1 string
 #'   reads correctly where a latin1 *file* is still an error.
 #' @param col_types `NULL` to infer each column's type, or a character
@@ -117,27 +119,8 @@ read_csv <- function(file = NULL,
   if (!is.logical(header) || length(header) != 1L) {
     stop("`header` must be TRUE, FALSE or NA.", call. = FALSE)
   }
-  if (!is.character(delimiter) || length(delimiter) != 1L || is.na(delimiter)) {
-    stop("`delimiter` must be a single character.", call. = FALSE)
-  }
-  if (nchar(delimiter, type = "bytes") != 1L ||
-      utf8ToInt(substr(delimiter, 1L, 1L)) > 127L) {
-    stop("`delimiter` must be a single ASCII byte.", call. = FALSE)
-  }
-  if (delimiter %in% c("\n", "\r", "\f", "\"")) {
-    stop(
-      "`delimiter` may not be a newline, carriage return, form feed or quote.",
-      call. = FALSE
-    )
-  }
-  if (!is.null(na)) {
-    if (!is.character(na)) {
-      stop("`na` must be a character vector or NULL.", call. = FALSE)
-    }
-    if (anyNA(na)) {
-      stop("`na` may not contain NA.", call. = FALSE)
-    }
-  }
+  zucsv_check_delimiter(delimiter)
+  zucsv_check_na(na)
   if (!is.null(col_types)) {
     if (!is.character(col_types) || length(col_types) == 0L || anyNA(col_types)) {
       stop("`col_types` must be a character vector of type names, or NULL.",

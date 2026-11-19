@@ -43,7 +43,9 @@ missing value.}
 
 \item{text}{The CSV itself, as a character vector, instead of a path. A
 vector of several elements is joined with newlines, so each element is
-one line --- \code{readLines()} output reads back unchanged. The string's
+one line --- \code{readLines()} output reads back unchanged, except that a CR
+inside a quoted field comes back as LF: \code{readLines()} ends a line at a
+CR, and the join puts an LF there. The string's
 declared encoding is honoured and converted to UTF-8, so a latin1 string
 reads correctly where a latin1 \emph{file} is still an error.}
 }

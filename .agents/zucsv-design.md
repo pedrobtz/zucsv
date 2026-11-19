@@ -110,7 +110,7 @@ The package requires R >= 4.2.0. From that version the native encoding on Window
 
 ### `text`
 
-The CSV itself, as a character vector, instead of a path. Several elements are joined with newlines, so one element is one line and `readLines()` output reads back unchanged --- the same meaning `utils::read.csv(text=)` gives it. The join happens in the R wrapper; C receives a single string.
+The CSV itself, as a character vector, instead of a path. Several elements are joined with newlines, so one element is one line and `readLines()` output reads back unchanged --- the same meaning `utils::read.csv(text=)` gives it. The one exception is a CR inside a quoted field: `readLines()` ends a line there, so the join turns that CR, or CR LF, into LF (2026-11-19, #42). The join happens in the R wrapper; C receives a single string.
 
 The two passes are the same two passes. `zucsv_open()` is already called once per pass, so a string needs no reopen: the memory source is an `opts.read` callback over the R string's bytes, and rewinding is `pos = 0`. Nothing downstream --- the row loop, inference, both passes, the row/column error messages --- knows which source it is reading.
 

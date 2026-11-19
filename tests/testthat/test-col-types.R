@@ -56,12 +56,16 @@ test_that("the failing error names the right row and column", {
   )
 })
 
-test_that("a long offending value is truncated in the message", {
-  long <- strrep("z", 100)
-  err <- tryCatch(read_text(paste0("a\n", long, "\n"), col_types = "double"),
-                  error = conditionMessage)
-  expect_match(err, "z{40}\\.\\.\\.")
-  expect_false(grepl(strrep("z", 41), err))
+test_that("an offending value is shown up to 40 bytes, then elided (#33)", {
+  shown <- function(n) {
+    err <- tryCatch(read_text(paste0("a\n", strrep("z", n), "\n"), col_types = "double"),
+                    error = conditionMessage)
+    sub('.*: "(.*)"$', "\\1", err)
+  }
+  expect_identical(shown(39), strrep("z", 39))
+  expect_identical(shown(40), strrep("z", 40))
+  expect_identical(shown(41), paste0(strrep("z", 40), "..."))
+  expect_identical(shown(100), paste0(strrep("z", 40), "..."))
 })
 
 test_that("missing cells are exempt from a forced type", {

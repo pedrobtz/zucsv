@@ -1,5 +1,16 @@
 # zucsv (development version)
 
+* `text =` keeps non-ASCII characters in a session whose locale is not UTF-8.
+  Before, in a C locale, `"\u00e9"` read as the four characters `<e9>`, with
+  no error (#57).
+
+* A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is now
+  rejected with "`delimiter` must be a single ASCII byte." instead of R's
+  "missing value where TRUE/FALSE needed" (#48).
+
+* `?read_csv` now says that a CR inside a quoted field comes back as LF when
+  the file is read through `text = readLines(path)` (#42).
+
 * Files with long cells read in linear time. The bundled parser rescanned the
   run before every token, so reading 50 rows of 64 KiB cells took 4.5 s; it
   now takes 0.02 s (#31). A long read also checks for an interrupt at least

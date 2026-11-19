@@ -66,7 +66,7 @@ the shared `r-package.md` rules; these are the package's own.
 ```sh
 R CMD INSTALL --preclean .              # when object files go stale
 R CMD build . && R CMD check --as-cran zucsv_*.tar.gz
-ZUCSV_STRESS=true Rscript -e 'devtools::test()'   # limits, millions of rows
+ZUCSV_STRESS=true Rscript -e 'devtools::test()'   # stress tests where NOT_CRAN is unset
 Rscript bench/bench.R [reps]            # two-pass overhead vs read.csv()
 tools/update-zsv.sh <commit-ish>        # re-vendor zsv, re-apply patches
 Rscript tools/update-csv-spectrum.R     # regenerate test-spectrum.R
@@ -138,9 +138,12 @@ the package name is the namespace.
 - **`test-differential.R` compares with `utils::read.csv()`** where the
   semantics overlap, with name repair off (zucsv does not repair names,
   design §5).
-- **Stress tests are gated on `ZUCSV_STRESS=true`** rather than
-  `skip_on_cran()` (`skip_unless_stress()`): they check limits, not memory
-  safety, and under gctorture they would cost hours.
+- **Heavy tests skip under gctorture, detected, not opted out of.**
+  `skip_under_gctorture()` reads `gctorture2()`'s step, which r-actions sets
+  in-process. `skip_unless_stress()` also skips on CRAN, for memory, and
+  `ZUCSV_STRESS=true` forces it on. Every other leg runs the stress tests,
+  2-3 s in all (#33). They check limits, not memory safety, and under
+  gctorture they would cost hours.
 
 ## Continuous integration
 

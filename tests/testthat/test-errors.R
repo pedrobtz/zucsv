@@ -37,7 +37,7 @@ test_that("the delimiter must be one ASCII byte and not a structural one", {
   f <- csv_file("a,b\n1,2\n")
   expect_error(read_csv(f, delimiter = ""), "single ASCII byte")
   expect_error(read_csv(f, delimiter = "ab"), "single ASCII byte")
-  expect_error(read_csv(f, delimiter = "é"), "single ASCII byte")
+  expect_error(read_csv(f, delimiter = "\u00e9"), "single ASCII byte")
   for (d in c("\n", "\r", "\f", "\"")) {
     expect_error(read_csv(f, delimiter = d), "may not be a newline")
   }
@@ -56,17 +56,21 @@ test_that("col_types is validated for names, and for length once known", {
   )
 })
 
-test_that("a file wider than the column cap is an error", {
-  skip_unless_stress()
-  wide <- paste0(paste0("c", seq_len(65537L)), collapse = ",")
-  expect_error(
-    read_text(paste0(wide, "\n")),
-    "exceeds zucsv's maximum of 65536 columns",
-    fixed = TRUE
-  )
-  # exactly at the cap is fine
-  at_cap <- paste0(paste0("c", seq_len(65536L)), collapse = ",")
-  expect_identical(ncol(read_text(paste0(at_cap, "\n"))), 65536L)
+test_that("the column cap is 65536, straddled on both routes (#33)", {
+  skip_under_gctorture() # 65,536 names; under 0.1 s anywhere else
+  header <- function(n) paste0(paste0("c", seq_len(n), collapse = ","), "\n")
+  for (n in c(65535L, 65536L)) {
+    expect_identical(ncol(read_text(header(n))), n)
+    expect_identical(ncol(read_csv(text = header(n))), n)
+    expect_identical(sniff_csv(text = header(n))$ncol, n)
+  }
+  msg <- "exceeds zucsv's maximum of 65536 columns"
+  expect_error(read_text(header(65537L)), msg, fixed = TRUE)
+  expect_error(read_csv(text = header(65537L)), msg, fixed = TRUE)
+  expect_error(sniff_csv(text = header(65537L)), msg, fixed = TRUE)
+  # a data row over the cap, under a header at it
+  over <- paste0(header(65536L), paste(rep("1", 65537L), collapse = ","), "\n")
+  expect_error(read_text(over), msg, fixed = TRUE)
 })
 
 test_that("reading leaves no file handles behind, on success or failure", {
@@ -87,4 +91,35 @@ test_that("reading leaves no file handles behind, on success or failure", {
   for (i in 1:50) invisible(read_csv(good))
   for (i in 1:50) try(read_csv(bad), silent = TRUE)
   expect_identical(count_open(), before)
+})
+
+test_that("every error path releases what it holds, on both routes (#38)", {
+  # Ungated so the sanitizer and valgrind legs run it: a leak on any
+  # Rf_error() path shows there as a definite loss with a stack. One input
+  # per error the reader raises, each read a few times through a file and
+  # through text.
+  bad <- list(
+    width = "a,b\n1,2,3\n",
+    unclosed = "a,b\n1,\"x\n2,3\n",
+    oversize = paste0("a\n1\n2,", strrep("X", 8388700), "\n3\n"),
+    nul = c(charToRaw("a\n1\n"), NUL, charToRaw("\n")),
+    utf8 = c(charToRaw("a\n"), BAD_UTF8, charToRaw("\n")),
+    forced = "a\nx\n"
+  )
+  for (nm in names(bad)) {
+    input <- bad[[nm]]
+    path <- csv_file(input)
+    for (i in 1:3) {
+      expect_error(read_csv(path, col_types = if (nm == "forced") "integer"), info = nm)
+      # sniff_csv() takes no col_types, so a forced type is not an error there
+      if (nm != "forced") expect_error(sniff_csv(path), info = nm)
+    }
+    if (is.character(input)) {
+      expect_error(read_csv(text = input, col_types = if (nm == "forced") "integer"), info = nm)
+    }
+    unlink(path)
+  }
+  # and repeated successful reads
+  good <- csv_file("a,b\n1,2\n3,4\n")
+  for (i in 1:50) expect_identical(nrow(read_csv(good)), 2L)
 })

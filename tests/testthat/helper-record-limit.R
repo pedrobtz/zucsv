@@ -4,7 +4,8 @@
 record_limit <- 8388608L
 
 oversize_message <- function(row) {
-  paste0("CSV row ", row, " exceeds zucsv's maximum record size of 8388607 bytes")
+  # sprintf, not paste0: under options(scipen = -5) paste0(3) is "3e+00".
+  sprintf("CSV row %d exceeds zucsv's maximum record size of 8388607 bytes", as.integer(row))
 }
 
 # Each input is about 9 MB. read_text() leaves its file in tempdir(), which

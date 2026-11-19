@@ -65,27 +65,8 @@
 sniff_csv <- function(file = NULL, delimiter = ",", na = c("", "NA"),
                       text = NULL) {
   src <- zucsv_source(file, text)
-  if (!is.character(delimiter) || length(delimiter) != 1L || is.na(delimiter)) {
-    stop("`delimiter` must be a single character.", call. = FALSE)
-  }
-  if (nchar(delimiter, type = "bytes") != 1L ||
-      utf8ToInt(substr(delimiter, 1L, 1L)) > 127L) {
-    stop("`delimiter` must be a single ASCII byte.", call. = FALSE)
-  }
-  if (delimiter %in% c("\n", "\r", "\f", "\"")) {
-    stop(
-      "`delimiter` may not be a newline, carriage return, form feed or quote.",
-      call. = FALSE
-    )
-  }
-  if (!is.null(na)) {
-    if (!is.character(na)) {
-      stop("`na` must be a character vector or NULL.", call. = FALSE)
-    }
-    if (anyNA(na)) {
-      stop("`na` may not contain NA.", call. = FALSE)
-    }
-  }
+  zucsv_check_delimiter(delimiter)
+  zucsv_check_na(na)
 
   .Call(C_sniff_csv, src$file, src$text, delimiter, na)
 }

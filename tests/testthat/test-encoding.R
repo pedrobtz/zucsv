@@ -41,16 +41,34 @@ test_that("an embedded NUL is an error naming the location", {
   )
 })
 
-test_that("a path with non-ASCII characters and ~ are both handled", {
-  dir <- file.path(tempdir(), "zucsv-éà")
+test_that("a path with non-ASCII characters reads", {
+  # The name must be representable in the session's locale.
+  skip_if_not(l10n_info()[["UTF-8"]], "not a UTF-8 locale")
+  dir <- file.path(tempdir(), "zucsv-\u00e9\u00e0")
   dir.create(dir, showWarnings = FALSE)
   on.exit(unlink(dir, recursive = TRUE), add = TRUE)
-  path <- file.path(dir, "café.csv")
+  path <- file.path(dir, "caf\u00e9.csv")
   con <- file(path, "wb"); writeBin(charToRaw("a,b\n1,2\n"), con); close(con)
-
   expect_identical(read_csv(path)$a, 1L)
-  # path.expand() is applied, so a ~ path resolves
-  expect_identical(read_csv(path.expand(path))$a, 1L)
+  expect_identical(sniff_csv(path)$nrow, 1L)
+})
+
+test_that("a ~ path is expanded, by read_csv() and sniff_csv() (#35)", {
+  skip_on_os("windows") # path.expand() reads USERPROFILE/HOMEDRIVE there
+  home <- tempfile("home")
+  dir.create(home)
+  old_home <- Sys.getenv("HOME", unset = NA)
+  on.exit({
+    if (is.na(old_home)) Sys.unsetenv("HOME") else Sys.setenv(HOME = old_home)
+    unlink(home, recursive = TRUE)
+  }, add = TRUE)
+  Sys.setenv(HOME = home)
+  con <- file(file.path(home, "tilde.csv"), "wb")
+  writeBin(charToRaw("a,b\n1,2\n"), con)
+  close(con)
+
+  expect_identical(read_csv("~/tilde.csv")$a, 1L)
+  expect_identical(sniff_csv("~/tilde.csv")$nrow, 1L)
 })
 
 

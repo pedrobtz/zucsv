@@ -20,6 +20,17 @@ test_that("readLines() output reads back unchanged", {
   expect_identical(read_csv(text = readLines(path)), read_csv(path))
 })
 
+test_that("a quoted CR comes back from readLines() as LF (#42)", {
+  # readLines() ends a line at a lone CR and at CR LF; the join restores LF.
+  # The file route keeps the bytes (#24), so the two routes differ here, as
+  # ?read_csv says.
+  for (cell in c("x\r\ny", "x\ry")) {
+    path <- csv_file(paste0("a,b\n\"", cell, "\",2\n"))
+    expect_identical(read_csv(path)$a, cell)
+    expect_identical(read_csv(text = readLines(path))$a, "x\ny")
+  }
+})
+
 test_that("exactly one source is required", {
   path <- csv_file("a\n1\n")
   expect_error(read_csv(), "Supply either `file` or `text`")
@@ -96,7 +107,7 @@ test_that("a declared encoding is honoured, where a file's cannot be", {
   latin1 <- rawToChar(as.raw(c(0x61, 0x2C, 0x62, 0x0A, 0x31, 0x2C, 0xE9)))
   Encoding(latin1) <- "latin1"
   df <- read_csv(text = latin1)
-  expect_identical(df$b, "é")
+  expect_identical(df$b, "\u00e9")
   expect_identical(Encoding(df$b), "UTF-8")
 
   expect_error(read_text(as.raw(c(0x61, 0x0A, 0xE9))), "invalid UTF-8")
@@ -119,4 +130,24 @@ test_that("a string is read twice without being consumed", {
   csv <- "a\n1\n2\n3\n"
   expect_identical(read_csv(text = csv), read_csv(text = csv))
   expect_identical(nrow(read_csv(text = csv)), 3L)
+})
+
+test_that("non-ASCII text = input survives a C locale (#57)", {
+  # paste() converts to the native encoding, which in a C locale cannot hold
+  # e-acute: it became the four bytes "<e9>", read as the cell's value.
+  skip_on_os("windows")
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  if (Sys.setlocale("LC_CTYPE", "C") == "") skip("cannot set LC_CTYPE to C")
+  expect_false(l10n_info()[["UTF-8"]])
+
+  latin1 <- rawToChar(as.raw(c(0x61, 0x2C, 0x62, 0x0A, 0x31, 0x2C, 0xE9)))
+  Encoding(latin1) <- "latin1"
+  utf8 <- "a,b\n1,\u00e9"
+  for (x in list(latin1, utf8, c("a,b", "1,\u00e9"))) {
+    b <- read_csv(text = x)$b
+    expect_identical(charToRaw(b), as.raw(c(0xC3, 0xA9)))
+    expect_identical(Encoding(b), "UTF-8")
+    expect_identical(sniff_csv(text = x)$nrow, 1L)
+  }
 })
