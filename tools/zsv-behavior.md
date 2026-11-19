@@ -117,6 +117,18 @@ closed virtually; `tools/patches/0003` adds an `errprintf` diagnostic for it
 is the input's last byte), which `zucsv` turns into an error (#30). Re-check
 both patches, and that exact format string, after any upgrade.
 
+## Vector scan cost
+
+Upstream's delimited scanner places each token it finds at `mask_last_start
++ bit`, where `mask_last_start` is the position *before* `vec_delims()`
+skipped vectors holding no token. So it lands back in the run it just
+skipped, and calls `vec_delims()` again every vector width. Values are
+unaffected, but the cost is quadratic in the distance between tokens. 50
+rows of 64 KiB cells (3.3 MB) took 4.5 s, with 6.6 GB scanned, measured
+2026-11-19. `tools/patches/0005` resets the base after the skip (#31), and
+`tests/testthat/test-scan.R` checks the cost ratio and the values at every
+vector width.
+
 ## Silent truncation: two paths `zucsv` must detect
 
 Neither raises an error status. Both would otherwise lose data silently.

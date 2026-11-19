@@ -193,6 +193,18 @@ Local patches, in `tools/patches/`:
   clean.
 - `0002-no-stderr-default-sink.patch`: removes the `stderr`/`fprintf`
   references so R CMD check's compiled-code test passes.
+- `0003-report-unclosed-quote-at-eof.patch`: reports a quote still open at
+  end of input through `errprintf`, which zucsv turns into an error (#30).
+- `0004-unescape-pending-quote-at-eof.patch`: keeps the closing quote out of
+  an escaped last cell when the input has no final newline (#45).
+- `0005-vector-scan-mask-base.patch`: places the vector scan's tokens
+  relative to the vector that holds them, which removes a quadratic rescan
+  (#31).
+
+0003 to 0005 fix upstream behaviour and are to be reported to
+`liquidaty/zsv`. Drop each one when upstream fixes it. zucsv also relies on
+the exact text of two `errprintf` formats ("Warning: row %zu truncated" and
+0003's), so check them after any upgrade.
 
 After an upgrade, re-verify `tools/zsv-behavior.md` (what the parser does at
 the edges the design depends on: blank records, BOM, oversize rows,

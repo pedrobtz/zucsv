@@ -1,5 +1,10 @@
 # zucsv (development version)
 
+* Files with long cells read in linear time. The bundled parser rescanned the
+  run before every token, so reading 50 rows of 64 KiB cells took 4.5 s; it
+  now takes 0.02 s (#31). A long read also checks for an interrupt at least
+  every 64 MiB, not only every 16,384 records.
+
 * A quote that is never closed is now an error naming the row and column
   where it opened. Before, a quote opened in the last column took the rest of
   the file into one cell, with no error (#30). Earlier columns gave a

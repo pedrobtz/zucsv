@@ -290,6 +290,19 @@ static void zucsv_check_unclosed(const zucsv_reader *r, double record, size_t n,
            (int)(j + 1), zucsv_col_label(names, j, label, sizeof(label)));
 }
 
+/* Interrupt checks by records and by bytes (ZUCSV_INTERRUPT_BYTES, #31).
+   zsv_cum_scanned_length() is a few loads, so calling it per record is
+   cheap. Checked with the budget lowered to 4 MiB on a 19.6 MB file of
+   64 KiB rows: it fired at 4.2, 8.4, 12.6 and 16.8 MB, where the record
+   count alone (300 rows) never would. */
+static void zucsv_maybe_interrupt(zsv_parser parser, double record, size_t *next_check) {
+  size_t scanned = zsv_cum_scanned_length(parser);
+  if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0 || scanned >= *next_check) {
+    *next_check = scanned + ZUCSV_INTERRUPT_BYTES;
+    R_CheckUserInterrupt();
+  }
+}
+
 static void zucsv_check_shape(size_t n, double record) {
   /* A zero-cell record is how an oversize row reaches us: the parser drops
      it silently and reports nothing (design SS15). */
@@ -391,6 +404,7 @@ static SEXP zucsv_read_body(void *data) {
 
   {
     double record = 0;
+    size_t next_check = ZUCSV_INTERRUPT_BYTES;
     int have_shape = 0;
     enum zsv_status status;
 
@@ -399,6 +413,8 @@ static SEXP zucsv_read_body(void *data) {
       zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
       zucsv_check_unclosed(&ctx->reader, record, n, names);
+      /* At the top, so blank records and the header count too. */
+      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
         continue; /* blank records are skipped everywhere (design SS10) */
@@ -486,9 +502,6 @@ static SEXP zucsv_read_body(void *data) {
         Rf_error("CSV has more than %d rows, which is more than a data frame can hold",
                  ZUCSV_MAX_ROWS);
       nrow += 1;
-
-      if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0)
-        R_CheckUserInterrupt();
     }
 
     /* A truncation reported with no record after it: the last record of
@@ -605,6 +618,7 @@ static SEXP zucsv_read_body(void *data) {
 
   {
     double record = 0, row = 0;
+    size_t next_check = ZUCSV_INTERRUPT_BYTES;
     int header_pending = header_row;
     enum zsv_status status;
 
@@ -613,6 +627,8 @@ static SEXP zucsv_read_body(void *data) {
       zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
       zucsv_check_unclosed(&ctx->reader, record, n, R_NilValue);
+      /* At the top, so blank records and the header count too. */
+      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
         continue;
@@ -671,9 +687,6 @@ static SEXP zucsv_read_body(void *data) {
         }
       }
       row += 1;
-
-      if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0)
-        R_CheckUserInterrupt();
     }
 
     /* A truncation reported with no record after it: the last record of

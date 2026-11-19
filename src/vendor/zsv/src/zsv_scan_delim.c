@@ -113,6 +113,8 @@ static enum zsv_status ZSV_SCAN_DELIM(struct zsv_scanner *scanner, unsigned char
         mask_total_offset = vec_delims(buff + i, bytes_read - i, &v.dl, &v.nl, &v.cr, &v.qt, &mask);
         if (LIKELY(mask_total_offset != 0)) {
           i += mask_total_offset;
+          // the mask's bits are relative to the vector that holds them
+          mask_last_start = i;
           if (VERY_UNLIKELY(mask == 0 && i == bytes_read))
             break; // vector processing ended on exactly our buffer end
         }
