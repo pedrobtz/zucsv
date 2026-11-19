@@ -1,0 +1,32 @@
+# Reason: report a quote still open at end of input through errprintf
+#
+# At end of input zsv_finish() closes an open quoted cell virtually, and the
+# cell then arrives flagged CLOSED like any properly quoted cell. Nothing in
+# the public API says the quote was never closed. A quote opened in the last
+# column therefore takes the rest of the file into one cell with no error
+# (zucsv #30): `a,b\n1,"x\n2,3\n` reads as one row.
+#
+# This adds one diagnostic, in the same form as the existing "row %zu
+# truncated" warning, and changes nothing else: the cell is still closed
+# virtually and parsing continues as before. A quote that is the last byte of
+# the input is the cell's closing quote, which the scanner marks
+# QUOTE_PENDING, so it is not reported. zucsv's errprintf sink turns the
+# message into an error naming the row and column.
+#
+# Upstream: to be reported to liquidaty/zsv as a request for an unclosed-quote
+# status. Drop this patch if upstream adds one.
+diff --git a/src/zsv.c b/src/zsv.c
+index 148694c..3b8f581 100644
+--- a/src/zsv.c
++++ b/src/zsv.c
+@@ -433,6 +433,10 @@ enum zsv_status zsv_finish(struct zsv_scanner *scanner) {
+      * are preserved (CLOSED|NEEDED) so downstream writers re-quote on
+      * output. */
+     if (scanner->quoted & ZSV_PARSER_QUOTE_UNCLOSED) {
++      /* A lone quote that ended the last chunk (PENDING) is the cell's
++       * closing quote; anything else still open here was never closed. */
++      if (!(scanner->quoted & ZSV_PARSER_QUOTE_PENDING))
++        scanner->errprintf(scanner->errf, "Warning: unclosed quote at end of input\n");
+       size_t pending = scanner->partial_row_length > scanner->cell_start
+                          ? scanner->partial_row_length - scanner->cell_start
+                        : scanner->scanned_length > scanner->cell_start ? scanner->scanned_length - scanner->cell_start

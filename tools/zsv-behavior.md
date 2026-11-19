@@ -104,12 +104,18 @@ behavior, so it stays covered by a fixture.
 | `"x\ry"` | `x\ry` — a lone CR is preserved too |
 | `x"y` (quote mid-cell) | `x"y` — accepted, passed through |
 | `"unterminated,2\n` | one cell, `unterminated,2\n` — no error status |
+| `1,"x\n2,3\n` (last column, never closed) | one record, `b` = `x\n2,3\n` — no error status, width right |
+| `"x"""` with no final newline | `x""` upstream; `x"` with `tools/patches/0004` (#45) |
 
 Bytes inside a quoted field are passed through untouched, CR included; only
 the *record* terminator is consumed. `zsv_status_nonstandard_csv` is raised
 only by the
 fast/SIMD engine, which `zucsv` does not use (§18), so malformed quoting is
-never an error from the parser — it surfaces as a row-width mismatch.
+never an error from the parser. A quote still open at end of input is
+closed virtually; `tools/patches/0003` adds an `errprintf` diagnostic for it
+(`"Warning: unclosed quote at end of input\n"`, not raised for a quote that
+is the input's last byte), which `zucsv` turns into an error (#30). Re-check
+both patches, and that exact format string, after any upgrade.
 
 ## Silent truncation: two paths `zucsv` must detect
 

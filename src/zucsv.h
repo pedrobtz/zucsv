@@ -87,6 +87,9 @@ typedef struct {
      does not fit its buffer (design SS15). zsv says so only through
      errprintf, whichever cell overflowed. */
   int truncated;
+  /* Set when the input ended inside a quoted cell (tools/patches/0003): zsv
+     closes it virtually, so the cell alone cannot say so (#30). */
+  int unclosed;
 } zucsv_reader;
 
 /* ------------------------------------------------------------------ *

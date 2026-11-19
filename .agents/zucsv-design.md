@@ -612,8 +612,17 @@ Required behavior:
 
 Blank-record (§10), BOM, and unbalanced-quote behavior are established in
 `tools/zsv-behavior.md` and pinned by fixtures rather than left accidental.
-An unbalanced quote is not an error from the parser: it swallows the rest of
-the line into one cell, which `zucsv` then reports as a row-width mismatch.
+A quote that is never closed is not an error from the parser: it takes the
+rest of the input into one cell and closes it virtually at end of input. A
+row-width mismatch catches that only when the quote opens before the last
+column; in the last column the record has the right width and the rest of
+the file is lost silently. So `tools/patches/0003` makes the parser report
+the case through `errprintf`, and `zucsv` raises
+`CSV row <r>, column <c> ("<name>") opens a quote that is never closed`
+(decided 2026-11-19 by the maintainer, #30). A quote that is the input's last
+byte is a closing quote, not an open one. The same end-of-input fix-up once
+kept that closing quote in a cell holding an escaped `""` (#45), which
+`tools/patches/0004` corrects.
 
 ## 15. Resource limits
 

@@ -1,5 +1,14 @@
 # zucsv (development version)
 
+* A quote that is never closed is now an error naming the row and column
+  where it opened. Before, a quote opened in the last column took the rest of
+  the file into one cell, with no error (#30). Earlier columns gave a
+  row-width error, which now names the real cause.
+
+* A quoted last cell holding an escaped quote (`""`) now reads correctly when
+  the file has no final newline. Before, it kept its closing quote:
+  `"x"""` read as `x""` instead of `x"` (#45).
+
 * A record longer than the 8,388,607-byte limit is now always an error naming
   the record. Before, only an overflow inside the record's first cell was
   caught. An overflow in a later cell read as a short row followed by an

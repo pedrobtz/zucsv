@@ -1,0 +1,27 @@
+# Reason: do not keep the closing quote of an escaped last cell at end of input
+#
+# When the input ends on a quoted cell that contains an escaped quote ("")
+# and has no final line terminator, the closing quote is the input's last
+# byte. The scanner cannot tell yet whether it is followed by another quote,
+# so it marks the cell QUOTE_PENDING. zsv_finish()'s end-of-input fix-up then
+# de-escapes "everything after the leading quote", closing quote included, so
+# `"x"""` reads as x"" instead of x" (zucsv #45). The same cell followed by a
+# newline reads correctly. This excludes the PENDING closing quote from the
+# interior.
+#
+# Upstream: the same code is in liquidaty/zsv main (src/zsv.c, inner_len =
+# pending - 1). To be reported with the inputs from zucsv #45; drop this
+# patch when upstream fixes it.
+--- a/src/zsv.c	2026-11-19 11:22:09
++++ b/src/zsv.c	2026-11-19 11:22:09
+@@ -453,6 +453,10 @@
+            * bytes. The synthetic trailing `"` is never read. */
+           unsigned char *inner = scanner->buff.buff + scanner->cell_start + 1;
+           size_t inner_len = pending - 1;
++          /* A PENDING quote is the input's last byte and the cell's
++           * closing quote: it is not part of the interior. */
++          if ((scanner->quoted & ZSV_PARSER_QUOTE_PENDING) && inner_len > 0)
++            inner_len--;
+           size_t out = 0;
+           for (size_t i = 0; i < inner_len; i++) {
+             inner[out++] = inner[i];

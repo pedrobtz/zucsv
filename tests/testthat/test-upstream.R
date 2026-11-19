@@ -39,10 +39,49 @@ test_that("the parser unescapes doubled quotes and keeps embedded delimiters", {
   expect_identical(read_text("a,b\n\"x\ny\",2\n")$a, "x\ny")
 })
 
-test_that("an unbalanced quote is not a parser error but a width mismatch", {
-  # The parser swallows the rest of the line into one cell and reports no
-  # error of its own, so zucsv sees a short row.
-  expect_error(read_text("a,b\n\"unterminated,2\n"), "has 1 field; expected 2")
+test_that("a quote never closed is an error naming where it opened (#30)", {
+  # The parser raises no status of its own: it closes the cell at end of
+  # input as if the quote had been closed. tools/patches/0003 makes it say so
+  # through errprintf, and zucsv reports it ahead of any width mismatch.
+  msg <- function(row, col, name) {
+    sprintf('CSV row %d, column %d ("%s") opens a quote that is never closed', row, col, name)
+  }
+  cases <- list(
+    list("a,b\n\"unterminated,2\n", msg(2, 1, "a")),
+    # the last column: once read as one row holding the rest of the file
+    list("a,b\n1,\"x\n2,3\n4,5\n", msg(2, 2, "b")),
+    list("a,b\r\n1,\"x\r\n2,3\r\n", msg(2, 2, "b")),
+    list("a\n\"x\n2\n3\n", msg(2, 1, "a")),
+    list("a\n\"x", msg(2, 1, "a")),
+    list("a\n\"", msg(2, 1, "a")),
+    # an escaped quote is not a closing one
+    list("a\n\"ab\"\"", msg(2, 1, "a")),
+    list("\"a,b\n1,2\n", msg(1, 1, "V1"))
+  )
+  for (case in cases) {
+    expect_error(read_text(case[[1]]), case[[2]], fixed = TRUE, info = case[[1]])
+    expect_error(read_csv(text = case[[1]]), case[[2]], fixed = TRUE, info = case[[1]])
+    expect_error(sniff_csv(text = case[[1]]), case[[2]], fixed = TRUE, info = case[[1]])
+  }
+})
+
+test_that("a quote closed by the input's last byte is closed (#30)", {
+  expect_identical(read_text("a\n\"x\"")$a, "x")
+  expect_identical(read_text("a,b\n1,\"x\ny\"")$b, "x\ny")
+  expect_identical(read_csv(text = "a\n\"x\"")$a, "x")
+})
+
+test_that("an escaped last cell unescapes without a final newline (#45)", {
+  # The closing quote, as the input's last byte, once stayed in the cell.
+  # utils::read.csv() is the oracle, with and without the terminator.
+  for (cell in c('"x"""', '"x""y"', '""""', '"a""b""c"', '"""x"', '"x""y""z"""')) {
+    for (term in c("", "\n", "\r\n")) {
+      txt <- paste0("a\n", cell, term)
+      want <- utils::read.csv(text = paste0("a\n", cell, "\n"))$a
+      expect_identical(read_text(txt, na = NULL)$a, want, info = txt)
+      expect_identical(read_csv(text = txt, na = NULL)$a, want, info = txt)
+    }
+  }
 })
 
 test_that("a quote in the middle of an unquoted cell is passed through", {
