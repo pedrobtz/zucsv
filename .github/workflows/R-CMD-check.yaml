@@ -13,17 +13,41 @@
 # R-devel on Linux already, on the compilers CRAN actually uses.
 
 on:
-  # No `push:`: a pull request already checks its merge with main,
-  # and the schedule checks main (r-actions README, "Pushes to main").
+  # No `push:`: a pull request already checks its merge with main, and the
+  # schedule checks main, skipping a commit it has already checked (r-actions
+  # README, "Pushes to main").
+  # `labeled`/`unlabeled` so that adding or removing a CI label (`full-ci`,
+  # `ci:minimal`, `skip-ci:<workflow>`) reruns it.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  # The full set runs weekly and on demand:
+  # `gh workflow run R-CMD-check.yaml --ref main`.
   schedule:
     - cron: "4 20 * * 6"
   workflow_dispatch:
-  pull_request:
 
 name: R-CMD-check.yaml
 
 permissions: read-all
 
+# A new push to a pull request cancels the run it supersedes. Other events
+# get a group of their own, so none is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   R-CMD-check:
+    # Decided without a runner; the gate inside repeats it. `ci:minimal` is
+    # left out: that label still runs the quick legs (ci.md, Labels).
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'full-ci')
+      || !(contains(github.event.pull_request.labels.*.name, 'ci:docs')
+        || contains(github.event.pull_request.labels.*.name, 'skip-ci:r-cmd-check'))
     uses: pedrobtz/r-actions/.github/workflows/r-cmd-check.yml@v1
+    with:
+      # Quick on pull requests (Ubuntu R-release and the clang 23 container).
+      # Full on the weekly schedule, on a dispatch, and on a pull request
+      # labelled `full-ci`.
+      profile: auto

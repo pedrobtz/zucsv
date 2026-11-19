@@ -42,8 +42,8 @@ exit criteria are; finish a stage's criteria before starting the next.
 0.1.0 is on CRAN, published 2026-10-16 from commit `1cc69d9` (the
 resubmission that named every `zsv` author in `Authors@R`). `main` is at
 `0.1.0.9000`, with a `# zucsv (development version)` heading in `NEWS.md`;
-record every user-visible change under it. As of 2026-11-11 the `0.1.0` tag
-and its GitHub release have still not been created. The tag is the bare
+record every user-visible change under it. The `0.1.0` tag (on `1cc69d9`)
+and its GitHub release were created on 2026-11-19. Tags are the bare
 version, `0.1.0`, not `v0.1.0`.
 
 ## Versions and dependents
@@ -144,24 +144,37 @@ the package name is the namespace.
 
 ## Continuous integration
 
+The callers follow r-actions' `examples/`. Pull requests run the quick
+profile (`profile: auto`); the schedule, a dispatch and the `full-ci` label
+run the full set. Every caller cancels a superseded pull request run, reruns
+when a CI label is added or removed, and skips its jobs without a runner
+under `ci:docs`, `ci:minimal` and `skip-ci:<workflow>`. The full set runs
+weekly in zucsv's Saturday slot: R-CMD-check at 20:04 UTC, coverage at
+20:09, native-checks at 20:14 and gctorture at 20:19. Run it on demand with
+`gh workflow run <file> --ref main`.
+
 - `R-CMD-check.yaml` calls `r-cmd-check.yml@v1`: the GitHub runners plus the
   R-hub containers matching CRAN's r-devel clang and GCC flavours, which see
-  the bundled parser's warnings before CRAN's pretest does.
+  the bundled parser's warnings before CRAN's pretest does. A pull request
+  runs Ubuntu R-release and the clang 23 container.
 - `native-checks.yaml` calls r-actions' `vendor.yml` (a change under
   `src/vendor` must also change `src/vendor/zsv/UPSTREAM`, the manifest),
-  `sanitizers.yml` (with `asan: true`), `valgrind.yml` (with
-  `--leak-check=full`, so leaks on error and interrupt paths carry a stack),
-  `lto.yml`, `gctorture.yml`, `rchk.yml` (`fail-on-findings: true`) and
-  `cran-special.yml` (full only). It runs weekly on Tuesdays and on dispatch.
-- `coverage.yaml` calls `coverage.yml@v1`; `pkgdown.yaml` builds the site on
-  pushes to `main`.
+  `sanitizers.yml` (UBSan on pull requests, plus `asan: true` in full),
+  `valgrind.yml` (full only, with `--leak-check=full`, so leaks on error and
+  interrupt paths carry a stack), `lto.yml`, `rchk.yml`
+  (`fail-on-findings: true`) and `cran-special.yml` (full only).
+- `gctorture.yaml` runs the quick step under a 10-minute budget on pull
+  requests, and step 20 on the schedule and on dispatch. A failed scheduled
+  run opens, or comments on, an issue labelled `gctorture`. Dispatch it on
+  the branch before merging a change to `PROTECT`s or the CHARSXP cache, and
+  set its `cron` to daily while a release changes `src/`.
+- `coverage.yaml` calls `coverage.yml`, pinned to a commit because it holds a
+  write token; the badge goes to `gh-pages`. `pkgdown.yaml` deploys the site
+  on pushes to `main` and on releases.
 
-**Deviations from the shared `ci.md` rules, as of 2026-11-11:** no workflow
-calls `changes.yml`. `native-checks.yaml` skips prose-only changes with a
-`paths-ignore` list instead, and `R-CMD-check.yaml` deliberately has none,
-because `README.md` ships in the tarball and `--as-cran` checks its URLs.
-`coverage.yaml` is pinned to `@v1`, not to a commit. Bring these in line
-with `ci.md` in their own pull request.
+**Deviation from the shared `ci.md` rules:** no workflow calls `changes.yml`.
+Every job calls an r-actions workflow, which classifies a docs-only change
+itself, so none needs the `changes` gate. There is no `analyzers` job yet.
 
 ## Vendored native code
 
