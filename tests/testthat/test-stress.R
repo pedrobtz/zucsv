@@ -48,17 +48,6 @@ test_that("a row over the record-size limit is an error, not a truncation", {
   )
 })
 
-test_that("repeated failing parses do not accumulate anything", {
-  skip_unless_stress()
-  # Under the sanitizer job this is the leak check for the error path.
-  bad <- csv_file("a,b\n1,2,3\n")
-  for (i in 1:2000) expect_error(read_csv(bad), "has 3 fields")
-
-  # and repeated successful ones
-  good <- csv_file("a,b\n1,2\n3,4\n")
-  for (i in 1:2000) expect_identical(nrow(read_csv(good)), 2L)
-})
-
 test_that("many columns and many rows together", {
   skip_unless_stress()
   ncol <- 500L

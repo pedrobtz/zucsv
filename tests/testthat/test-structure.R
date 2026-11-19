@@ -122,7 +122,7 @@ test_that("repeated character values are reused without changing anything", {
   # reuse preserves the UTF-8 marking
   utf <- read_text(c(charToRaw("a\n"), as.raw(c(0xC3, 0xA9)), charToRaw("\n"),
                      as.raw(c(0xC3, 0xA9)), charToRaw("\n")))
-  expect_identical(utf$a, c("é", "é"))
+  expect_identical(utf$a, c("\u00e9", "\u00e9"))
   expect_identical(Encoding(utf$a), c("UTF-8", "UTF-8"))
 
   # values that differ only in length, and only in a trailing byte
@@ -135,10 +135,11 @@ test_that("repeated character values are reused without changing anything", {
 })
 
 test_that("a long run of a long value is still correct", {
-  skip_unless_stress()
+  # Ungated (#38): the CHARSXP reuse cache is what gctorture most needs to
+  # see, and 200 rows exercise it as well as 5000.
   val <- strrep("abcdefgh", 200)
-  txt <- paste0("a\n", paste(rep(val, 5000), collapse = "\n"), "\n")
+  txt <- paste0("a\n", paste(rep(val, 200), collapse = "\n"), "\n")
   got <- read_text(txt)$a
-  expect_identical(length(got), 5000L)
+  expect_identical(length(got), 200L)
   expect_identical(unique(got), val)
 })

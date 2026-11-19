@@ -107,7 +107,7 @@ test_that("a declared encoding is honoured, where a file's cannot be", {
   latin1 <- rawToChar(as.raw(c(0x61, 0x2C, 0x62, 0x0A, 0x31, 0x2C, 0xE9)))
   Encoding(latin1) <- "latin1"
   df <- read_csv(text = latin1)
-  expect_identical(df$b, "é")
+  expect_identical(df$b, "\u00e9")
   expect_identical(Encoding(df$b), "UTF-8")
 
   expect_error(read_text(as.raw(c(0x61, 0x0A, 0xE9))), "invalid UTF-8")
