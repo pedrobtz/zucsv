@@ -433,6 +433,10 @@ enum zsv_status zsv_finish(struct zsv_scanner *scanner) {
      * are preserved (CLOSED|NEEDED) so downstream writers re-quote on
      * output. */
     if (scanner->quoted & ZSV_PARSER_QUOTE_UNCLOSED) {
+      /* A lone quote that ended the last chunk (PENDING) is the cell's
+       * closing quote; anything else still open here was never closed. */
+      if (!(scanner->quoted & ZSV_PARSER_QUOTE_PENDING))
+        scanner->errprintf(scanner->errf, "Warning: unclosed quote at end of input\n");
       size_t pending = scanner->partial_row_length > scanner->cell_start
                          ? scanner->partial_row_length - scanner->cell_start
                        : scanner->scanned_length > scanner->cell_start ? scanner->scanned_length - scanner->cell_start
@@ -449,6 +453,10 @@ enum zsv_status zsv_finish(struct zsv_scanner *scanner) {
            * bytes. The synthetic trailing `"` is never read. */
           unsigned char *inner = scanner->buff.buff + scanner->cell_start + 1;
           size_t inner_len = pending - 1;
+          /* A PENDING quote is the input's last byte and the cell's
+           * closing quote: it is not part of the interior. */
+          if ((scanner->quoted & ZSV_PARSER_QUOTE_PENDING) && inner_len > 0)
+            inner_len--;
           size_t out = 0;
           for (size_t i = 0; i < inner_len; i++) {
             inner[out++] = inner[i];

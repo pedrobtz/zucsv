@@ -1,7 +1,7 @@
 Upstream:  https://github.com/liquidaty/zsv.git
 Describe:  v1.4.3-41-g6195954
 Commit:    61959542b18581e38f291957d9a500fab77be719
-Vendored:  2026-09-12
+Vendored:  2026-11-19
 By:        tools/update-zsv.sh
 License:   MIT (see LICENSE in this directory)
 
@@ -17,3 +17,6 @@ what catches a change.
 Patches applied (tools/patches, in sorted order):
   0001-guard-unused-forward-declaration.patch guard an unused forward declaration so -Wunused-function is clean
   0002-no-stderr-default-sink.patch        remove stderr/fprintf references so R CMD check's compiled-code test passes
+  0003-report-unclosed-quote-at-eof.patch  report a quote still open at end of input through errprintf
+  0004-unescape-pending-quote-at-eof.patch do not keep the closing quote of an escaped last cell at end of input
+  0005-vector-scan-mask-base.patch         take the vector scan's token bits relative to the vector that holds them

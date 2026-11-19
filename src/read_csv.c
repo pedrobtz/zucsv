@@ -18,10 +18,19 @@
  * ------------------------------------------------------------------ */
 
 /* Installed as opts.errprintf so no vendored code can write to the R
-   session's stderr, whatever the input. */
-static int zucsv_discard_diagnostics(void *ctx, const char *fmt, ...) {
-  (void)ctx;
-  (void)fmt;
+   session's stderr, whatever the input. Nothing is printed. The one message
+   that matters is kept as a flag: "Warning: row %zu truncated" is zsv's only
+   report that a record overflowed its buffer. It then hands over the cells
+   that fit as a record, and parses the rest of the line as further records,
+   so without the flag an oversize record becomes a short row or vanishes
+   (#28). Only zsv.c emits that message; the format is matched exactly. */
+static int zucsv_diagnostics(void *ctx, const char *fmt, ...) {
+  if (!ctx || !fmt)
+    return 0;
+  if (strcmp(fmt, "Warning: row %zu truncated\n") == 0)
+    ((zucsv_reader *)ctx)->truncated = 1;
+  else if (strcmp(fmt, "Warning: unclosed quote at end of input\n") == 0)
+    ((zucsv_reader *)ctx)->unclosed = 1; /* tools/patches/0003, #30 */
   return 0;
 }
 
@@ -116,7 +125,10 @@ static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
     opts.read = zucsv_read_text;
     opts.stream = r;
   }
-  opts.errprintf = zucsv_discard_diagnostics;
+  opts.errprintf = zucsv_diagnostics;
+  opts.errf = r;
+  r->truncated = 0;
+  r->unclosed = 0;
   opts.delimiter = delimiter;
   /* One more than the cap: zsv truncates silently at max_columns, so the
      spare slot is what lets a file over the cap be told from one at it
@@ -256,12 +268,47 @@ static void zucsv_check_forced(zucsv_type type, const struct zsv_cell *c, double
 /* Shape errors that apply to any record, checked before its width is known
    to be right. `record` is 1-based as the parser emits records, header
    included (design SS10). */
+/* A record zsv truncated is an error at that record, checked before any of
+   its cells is looked at: the cells it handed over are a prefix of the
+   record, and the records after it are the rest of the same line (#28). */
+static void zucsv_check_truncated(const zucsv_reader *r, double record) {
+  if (r->truncated)
+    Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
+             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
+}
+
+/* The input ended inside a quoted cell. zsv reports it while returning the
+   last record, whose last cell is the one the quote opened (#30). Checked
+   before the record's width, so the error names the real cause. */
+static void zucsv_check_unclosed(const zucsv_reader *r, double record, size_t n,
+                                 SEXP names) {
+  if (!r->unclosed)
+    return;
+  char label[64];
+  R_xlen_t j = n ? (R_xlen_t)n - 1 : 0;
+  Rf_error("CSV row %.0f, column %d (\"%s\") opens a quote that is never closed", record,
+           (int)(j + 1), zucsv_col_label(names, j, label, sizeof(label)));
+}
+
+/* Interrupt checks by records and by bytes (ZUCSV_INTERRUPT_BYTES, #31).
+   zsv_cum_scanned_length() is a few loads, so calling it per record is
+   cheap. Checked with the budget lowered to 4 MiB on a 19.6 MB file of
+   64 KiB rows: it fired at 4.2, 8.4, 12.6 and 16.8 MB, where the record
+   count alone (300 rows) never would. */
+static void zucsv_maybe_interrupt(zsv_parser parser, double record, size_t *next_check) {
+  size_t scanned = zsv_cum_scanned_length(parser);
+  if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0 || scanned >= *next_check) {
+    *next_check = scanned + ZUCSV_INTERRUPT_BYTES;
+    R_CheckUserInterrupt();
+  }
+}
+
 static void zucsv_check_shape(size_t n, double record) {
   /* A zero-cell record is how an oversize row reaches us: the parser drops
      it silently and reports nothing (design SS15). */
   if (n == 0)
     Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
-             (unsigned)ZUCSV_MAX_ROW_SIZE);
+             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
   if (n > (size_t)ZUCSV_MAX_COLS)
     Rf_error("CSV exceeds zucsv's maximum of %d columns", ZUCSV_MAX_COLS);
 }
@@ -357,12 +404,17 @@ static SEXP zucsv_read_body(void *data) {
 
   {
     double record = 0;
+    size_t next_check = ZUCSV_INTERRUPT_BYTES;
     int have_shape = 0;
     enum zsv_status status;
 
     while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
       record += 1;
+      zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
+      zucsv_check_unclosed(&ctx->reader, record, n, names);
+      /* At the top, so blank records and the header count too. */
+      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
         continue; /* blank records are skipped everywhere (design SS10) */
@@ -450,11 +502,12 @@ static SEXP zucsv_read_body(void *data) {
         Rf_error("CSV has more than %d rows, which is more than a data frame can hold",
                  ZUCSV_MAX_ROWS);
       nrow += 1;
-
-      if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0)
-        R_CheckUserInterrupt();
     }
 
+    /* A truncation reported with no record after it: the last record of
+       the input overflowed. */
+    zucsv_check_truncated(&ctx->reader, record + 1);
+    zucsv_check_unclosed(&ctx->reader, record, 0, R_NilValue);
     zucsv_check_parse(status, ctx->path);
   }
 
@@ -565,12 +618,17 @@ static SEXP zucsv_read_body(void *data) {
 
   {
     double record = 0, row = 0;
+    size_t next_check = ZUCSV_INTERRUPT_BYTES;
     int header_pending = header_row;
     enum zsv_status status;
 
     while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
       record += 1;
+      zucsv_check_truncated(&ctx->reader, record);
       size_t n = zsv_cell_count(ctx->reader.parser);
+      zucsv_check_unclosed(&ctx->reader, record, n, R_NilValue);
+      /* At the top, so blank records and the header count too. */
+      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
 
       if (zucsv_is_blank_record(ctx->reader.parser, n))
         continue;
@@ -629,11 +687,12 @@ static SEXP zucsv_read_body(void *data) {
         }
       }
       row += 1;
-
-      if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0)
-        R_CheckUserInterrupt();
     }
 
+    /* A truncation reported with no record after it: the last record of
+       the input overflowed. */
+    zucsv_check_truncated(&ctx->reader, record + 1);
+    zucsv_check_unclosed(&ctx->reader, record, 0, R_NilValue);
     zucsv_check_parse(status, ctx->path);
     /* Before concluding the file changed: a read error partway through ends
        the loop with a short table too, and "cannot read" is the truer

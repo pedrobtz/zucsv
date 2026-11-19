@@ -104,19 +104,53 @@ behavior, so it stays covered by a fixture.
 | `"x\ry"` | `x\ry` — a lone CR is preserved too |
 | `x"y` (quote mid-cell) | `x"y` — accepted, passed through |
 | `"unterminated,2\n` | one cell, `unterminated,2\n` — no error status |
+| `1,"x\n2,3\n` (last column, never closed) | one record, `b` = `x\n2,3\n` — no error status, width right |
+| `"x"""` with no final newline | `x""` upstream; `x"` with `tools/patches/0004` (#45) |
 
 Bytes inside a quoted field are passed through untouched, CR included; only
 the *record* terminator is consumed. `zsv_status_nonstandard_csv` is raised
 only by the
 fast/SIMD engine, which `zucsv` does not use (§18), so malformed quoting is
-never an error from the parser — it surfaces as a row-width mismatch.
+never an error from the parser. A quote still open at end of input is
+closed virtually; `tools/patches/0003` adds an `errprintf` diagnostic for it
+(`"Warning: unclosed quote at end of input\n"`, not raised for a quote that
+is the input's last byte), which `zucsv` turns into an error (#30). Re-check
+both patches, and that exact format string, after any upgrade.
+
+## Vector scan cost
+
+Upstream's delimited scanner places each token it finds at `mask_last_start
++ bit`, where `mask_last_start` is the position *before* `vec_delims()`
+skipped vectors holding no token. So it lands back in the run it just
+skipped, and calls `vec_delims()` again every vector width. Values are
+unaffected, but the cost is quadratic in the distance between tokens. 50
+rows of 64 KiB cells (3.3 MB) took 4.5 s, with 6.6 GB scanned, measured
+2026-11-19. `tools/patches/0005` resets the base after the skip (#31), and
+`tests/testthat/test-scan.R` checks the cost ratio and the values at every
+vector width.
 
 ## Silent truncation: two paths `zucsv` must detect
 
 Neither raises an error status. Both would otherwise lose data silently.
 
-**Oversize row → `n == 0`.** A row larger than the internal buffer is
-emitted as a record with *zero* cells:
+**Oversize row → a truncation diagnostic, and a record of any shape.** A
+row larger than the scan buffer (twice `max_row_size`) makes zsv call
+`errprintf(errf, "Warning: row %zu truncated\n", ...)` (`zsv.c`, two sites)
+and then:
+
+| Where the record overflows | What `zsv_next_row()` returns |
+|---|---|
+| inside its first cell | a record with `n == 0`, then the rest of the line as records |
+| inside a later cell | the cells that fit, then the rest of the line as records |
+| exactly at the buffer's end | nothing for that record: it vanishes |
+| one byte short of the end | a cell over bytes that are not input (read as an embedded NUL) |
+
+Measured 2026-11-19 for #28; the triggers are in
+`tests/testthat/test-record-limit.R`. Only the diagnostic covers every shape,
+so `zucsv`'s `errprintf` sink sets a flag on the reader and the record returned
+with it set is the §15 record-size error. The largest record that reads is
+8,388,607 bytes with `max_row_size` = 4 MiB: delimiters and quotes count,
+the terminator does not, whatever it is.
 
 | Input | Result |
 |---|---|
@@ -124,9 +158,8 @@ emitted as a record with *zero* cells:
 | 500 KB row, `buffsize` = 2 MB | record with `n=2`, 500001 bytes, intact |
 | 500 KB row, `max_row_size` = 1 MB | record with `n=2`, 500001 bytes, intact |
 
-`n == 0` is an unambiguous overflow signal: even a blank line yields `n == 1`.
-`zucsv` sets a generous `max_row_size` and treats `n == 0` as the §15
-record-size error.
+After a re-vendor, re-check that both truncation sites still call `errprintf`
+with exactly that format string: `zucsv` matches it byte for byte.
 
 **Too many columns → silent truncation at `max_columns`.** A 20-column row
 parsed with `max_columns = 19` yields `n = 19`, with no error and no way to

@@ -1,5 +1,30 @@
 # zucsv (development version)
 
+* Files with long cells read in linear time. The bundled parser rescanned the
+  run before every token, so reading 50 rows of 64 KiB cells took 4.5 s; it
+  now takes 0.02 s (#31). A long read also checks for an interrupt at least
+  every 64 MiB, not only every 16,384 records.
+
+* A quote that is never closed is now an error naming the row and column
+  where it opened. Before, a quote opened in the last column took the rest of
+  the file into one cell, with no error (#30). Earlier columns gave a
+  row-width error, which now names the real cause.
+
+* A quoted last cell holding an escaped quote (`""`) now reads correctly when
+  the file has no final newline. Before, it kept its closing quote:
+  `"x"""` read as `x""` instead of `x"` (#45).
+
+* A record longer than the 8,388,607-byte limit is now always an error naming
+  the record. Before, only an overflow inside the record's first cell was
+  caught. An overflow in a later cell read as a short row followed by an
+  invented one, made the record vanish, or reported an embedded NUL the file
+  did not have (#28). `?read_csv` now states both limits.
+
+* The `read_csv()` documentation no longer claims that a CR LF pair inside a
+  quoted field is normalised to LF. It never was: bytes inside a quoted field
+  are kept as they are, CR included, and now a test pins that for CRLF files
+  and for `text` as well (#24).
+
 # zucsv 0.1.0
 
 First release.

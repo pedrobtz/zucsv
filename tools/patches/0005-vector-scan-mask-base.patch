@@ -1,0 +1,27 @@
+# Reason: take the vector scan's token bits relative to the vector that holds them
+#
+# The delimited scanner records mask_last_start = i, calls vec_delims() to
+# skip whole vectors holding no token, and advances i by the bytes skipped.
+# It then places each token at mask_last_start + bit, the position from
+# before the skip. So i lands back inside the run of ordinary bytes it just
+# skipped. The loop walks forward from there and calls vec_delims() again
+# every vector width, and each call rescans to the same token. Values are
+# unaffected, because ordinary bytes are no-ops and no token is passed, but
+# the cost is quadratic in the distance between tokens. 50 rows of 64 KiB
+# cells (3.3 MB) took 4.5 s against 0.02 s with this fix, and 6.6 GB was
+# scanned for the 3.3 MB input (zucsv #31).
+#
+# Upstream: the same code is in liquidaty/zsv main (src/zsv_scan_delim.c).
+# To be reported with the measurements from zucsv #31; drop this patch when
+# upstream fixes it.
+--- a/src/zsv_scan_delim.c	2026-11-19 11:31:08
++++ b/src/zsv_scan_delim.c	2026-11-19 11:31:08
+@@ -113,6 +113,8 @@
+         mask_total_offset = vec_delims(buff + i, bytes_read - i, &v.dl, &v.nl, &v.cr, &v.qt, &mask);
+         if (LIKELY(mask_total_offset != 0)) {
+           i += mask_total_offset;
++          // the mask's bits are relative to the vector that holds them
++          mask_last_start = i;
+           if (VERY_UNLIKELY(mask == 0 && i == bytes_read))
+             break; // vector processing ended on exactly our buffer end
+         }

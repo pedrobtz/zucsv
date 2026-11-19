@@ -43,6 +43,27 @@ test_that("quoting is handled by the parser", {
   expect_identical(read_text("a\n\"x\ry\"\n")$a, "x\ry")
 })
 
+test_that("a quoted CR LF is kept whatever the line ending and the route (#24, #32)", {
+  # The documentation once claimed a quoted CR LF became LF. Both halves of
+  # the claim are pinned: the CR stays in the cell, and only the record
+  # terminator is removed, so nothing leaks into the last cell.
+  want <- data.frame(a = "x\r\ny", b = 2L)
+  for (txt in c(
+    "a,b\r\n\"x\r\ny\",2\r\n", # CRLF file
+    "a,b\r\n\"x\r\ny\",2", # no final terminator
+    "a,b\n\"x\r\ny\",2\r\n", # mixed terminators
+    "a,b\r\"x\r\ny\",2\r" # CR-only file
+  )) {
+    expect_identical(read_text(txt), want, info = encodeString(txt))
+    expect_identical(read_csv(text = txt), want, info = encodeString(txt))
+  }
+  # text as a vector: elements are joined with LF, so "x\r" + "y" is x CR LF y
+  expect_identical(read_csv(text = c("a,b", "\"x\r", "y\",2")), want)
+  lone <- data.frame(a = "x\ry")
+  expect_identical(read_text("a\r\n\"x\ry\"\r\n"), lone)
+  expect_identical(read_csv(text = "a\r\n\"x\ry\"\r\n"), lone)
+})
+
 test_that("a trailing delimiter produces a final empty field", {
   df <- read_text("a,b,\n1,2,\n")
   expect_identical(ncol(df), 3L)
