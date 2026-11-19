@@ -130,12 +130,17 @@ single-column file, write an intentional empty cell as <code>""</code> — a bar
 empty line is skipped.</p></li>
 <li><p><strong>Every record must have the same width.</strong> A mismatch is an error;
 short rows are not padded.</p></li>
+<li><p><strong>A record may be at most 8,388,607 bytes</strong>, counting delimiters and
+quotes but not its line terminator, and a file at most 65,536 columns.
+A record over either limit is an error naming it.</p></li>
 <li><p><strong>Column names are kept exactly as they appear</strong>, including duplicates
 and empty strings. No name repair is performed.</p></li>
 <li><p><strong>Text must be valid UTF-8.</strong> A byte sequence that is not, or an
 embedded NUL, is an error rather than something passed through to fail
 later. A UTF-8 BOM is ignored.</p></li>
-<li><p>A CR LF pair inside a quoted field is normalised to a single LF.</p></li>
+<li><p><strong>Bytes inside a quoted field are kept as they are.</strong> A CR LF pair or a
+lone CR in a quoted field stays in the cell, whatever line ending the
+file uses; only the record terminator is removed.</p></li>
 <li><p><strong><code>header = NA</code> looks at the first record only</strong>, and at nothing else:
 not the rest of the file, not <code>col_types</code>, and not <code>na</code>. It therefore
 reaches a different verdict from <code><a href="https://rdrr.io/pkg/data.table/man/fread.html" class="external-link">data.table::fread()</a></code> and DuckDB, which
