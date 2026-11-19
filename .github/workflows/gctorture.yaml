@@ -14,9 +14,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   schedule:
-    # Weekly while the package is released and changes slowly; daily
-    # ("17 3 * * *") while a release changes src/.
-    - cron: "19 20 * * 6"
+    # Daily while a release changes src/ (v0.1.1, from 2026-11-19); weekly
+    # ("19 20 * * 6", zucsv's Saturday slot) once it is released.
+    - cron: "19 20 * * *"
   workflow_dispatch:
 
 name: gctorture
