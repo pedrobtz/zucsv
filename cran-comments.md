@@ -1,61 +1,36 @@
-## Resubmission
+## Update
 
-This is a resubmission. In response to the review of 2 October 2026:
+This is an update from 0.1.0 to 0.1.1, a patch release.
 
-* `Authors@R` now names every author and copyright holder of the bundled
-  code, taken from the copyright notices in the upstream file headers:
-  Tai Chi Minh Ralph Eastwood (`ctb`, `cph`) and Matt Wong (`ctb`) as authors
-  of the 'zsv' library; Guarnerix Inc dba Liquidaty (`cph`), which holds the
-  copyright in Matt Wong's contribution and in the files without a per-file
-  notice; "zsv contributors" (`ctb`, `cph`) for the files whose notice reads
-  "Liquidaty and the zsv/lib contributors"; and Max Ogden (`ctb`, `cph`), the
-  author of the 'csv-spectrum' fixtures transcribed into the tests.
-* `inst/COPYRIGHTS` now reproduces each bundled file's copyright notice and
-  maps it to these entries.
-* No code has changed.
+It fixes inputs that read as a wrong table with no error. A record longer
+than the size limit, when the overflow fell after its first cell, read as a
+short row plus an invented one. A quote never closed in the last column took
+the rest of the file into one cell. An escaped last cell kept its closing
+quote when the file had no final newline. Non-ASCII `text =` input was altered
+in a C locale. It also removes quadratic time on long cells. See `NEWS.md`.
+
+Three of the fixes are in the bundled 'zsv' parser. They are applied as
+recorded patches (`tools/patches/0003` to `0005`, listed in
+`src/vendor/zsv/UPSTREAM`), and no new bundled file or author is added.
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+0 errors | 0 warnings | 0 notes
 
-* This is a new submission.
-* "LF" in the Description, flagged as possibly misspelled, is the line-feed
-  line ending (as in "LF and CRLF line endings").
+## Reverse dependencies
 
-## Notes for the reviewer
-
-* The package bundles a subset of the 'zsv' CSV parser
-  (<https://github.com/liquidaty/zsv>), which is MIT licensed. Its authors
-  and copyright holders are listed in `Authors@R`, the affected files and
-  their licence are itemised in `inst/COPYRIGHTS`, and the exact upstream
-  commit and the patches applied to it are recorded in
-  `src/vendor/zsv/UPSTREAM`. Only the parser library is included; the zsv
-  command-line application and its SQL, SQLite, JSON and extension facilities
-  are not part of this package.
-
-* The compiled code has been checked under AddressSanitizer and
-  UndefinedBehaviorSanitizer, and holds no reference to stdout or stderr:
-  the parser's default diagnostic sink is patched to a no-op so that no
-  bundled code can write to the console.
-
-* Tests that need large inputs (a table at the 65,536 column limit, 200,000
-  rows, a multi-megabyte cell) are behind `skip_on_cran()`. Everything runs
-  in `tempdir()`.
-
-## Method references
-
-There are no published references describing the methods in this package. It
-implements CSV parsing as defined by RFC 4180, and column-type inference whose
-rules are documented in `?read_csv` and chosen to agree with
-`utils::read.csv()` on the values both accept.
+One package on CRAN, 'zumime', suggests 'zucsv'. Its R CMD check passes with
+this version installed (0 errors, 0 warnings). Its use of `sniff_csv()`
+handles the new errors for malformed input as it handles the existing ones.
 
 ## Test environments
 
-* local macOS 26.6.2, R 4.6.1
-* GitHub Actions: macOS, Windows and Ubuntu on R release; Ubuntu on oldrel-1
+* local macOS 15.7, R 4.6.2
+* GitHub Actions (pedrobtz/r-actions@v1): macOS, Windows and Ubuntu on R
+  release; Ubuntu on oldrel-1
 * GitHub Actions, in the R-hub containers built to match CRAN's r-devel Linux
   flavors -- clang23, ubuntu-clang and ubuntu-gcc16 -- compiled as CRAN
   compiles them, with `CC += -std=gnu23` and `CFLAGS += -pedantic`
 * GitHub Actions (pedrobtz/r-actions@v1): AddressSanitizer and
-  UndefinedBehaviorSanitizer under R-devel, valgrind, LTO, gctorture, and
-  rchk
+  UndefinedBehaviorSanitizer under R-devel, valgrind, LTO, gctorture, rchk,
+  and CRAN's rcnst, rlibro and vnu checks

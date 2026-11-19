@@ -53,7 +53,9 @@ The next release is v0.1.1, tracked in
 as sub-issues. CRAN's cadence opens on 2026-11-27, six weeks after publication
 ([#14](https://github.com/pedrobtz/zucsv/issues/14)); that is the earliest a
 submission is allowed, not a plan to submit. Sibling packages that depend on
-this one: none recorded.
+this one: `zumime` (on CRAN, `Suggests: zucsv`; it calls `sniff_csv()` on
+arbitrary files inside `tryCatch()`, so a new error for malformed input
+leaves its result unchanged). Check it against every release.
 
 Any new vendored file that names an author means a new `Authors@R` entry:
 CRAN asked for every one by name.
