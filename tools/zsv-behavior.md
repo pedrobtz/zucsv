@@ -113,8 +113,8 @@ only by the
 fast/SIMD engine, which `zucsv` does not use (§18), so malformed quoting is
 never an error from the parser. A quote still open at end of input is
 closed virtually; `tools/patches/0003` adds an `errprintf` diagnostic for it
-(`"Warning: unclosed quote at end of input\n"`, not raised for a quote that
-is the input's last byte), which `zucsv` turns into an error (#30). Re-check
+(`"Warning: unclosed quote at end of input\n"`, not raised for a closing
+quote that is the input's last byte; an opening one there is reported), which `zucsv` turns into an error (#30). Re-check
 both patches, and that exact format string, after any upgrade.
 
 ## Vector scan cost

@@ -147,6 +147,8 @@ double zucsv_as_double(const unsigned char *str, size_t len);
    afterwards the conversion state is read-only, which keeps the hot path
    branch-free and would keep it race-free on worker threads. */
 void zucsv_numeric_init(void);
+/* Tests only, never exported (#36): switches the converter instance, which
+   is the one write to that state after init. Not for use while a read runs. */
 SEXP C_strtod_mode(SEXP mode);
 
 /* --- per-column inference state ------------------------------------ */

@@ -6,7 +6,9 @@
 # * https://r-pkgs.org/testing-design.html#sec-tests-files-overview
 # * https://testthat.r-lib.org/articles/special-files.html
 
-library(testthat)
-library(zucsv)
-
-test_check("zucsv")
+# CRAN's noSuggests check runs without testthat installed.
+if (requireNamespace("testthat", quietly = TRUE)) {
+  library(testthat)
+  library(zucsv)
+  test_check("zucsv")
+}

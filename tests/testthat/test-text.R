@@ -151,3 +151,32 @@ test_that("non-ASCII text = input survives a C locale (#57)", {
     expect_identical(sniff_csv(text = x)$nrow, 1L)
   }
 })
+
+test_that("unmarked text = input reads as UTF-8 bytes in a C locale, as a file does (#60)", {
+  # readLines() returns unmarked strings. enc2utf8() escaped their non-ASCII
+  # bytes in a C locale, so readLines() output read back as "<c3><a9>".
+  skip_on_os("windows")
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  if (Sys.setlocale("LC_CTYPE", "C") == "") skip("cannot set LC_CTYPE to C")
+
+  path <- csv_file(as.raw(c(0x61, 0x2c, 0x62, 0x0a, 0xc3, 0xa9, 0x2c, 0x31, 0x0a)))
+  lines <- readLines(path)
+  expect_identical(Encoding(lines[2]), "unknown")
+  expect_identical(read_csv(text = lines), read_csv(path))
+  expect_identical(charToRaw(read_csv(text = lines)$a), as.raw(c(0xc3, 0xa9)))
+  expect_identical(sniff_csv(text = lines), sniff_csv(path))
+
+  # bytes that are not UTF-8 are an error, as in a file
+  bad <- rawToChar(as.raw(c(0x61, 0x0a, 0xe9)))
+  expect_error(read_csv(text = bad), "invalid UTF-8 at row 2, column 1", fixed = TRUE)
+
+  # a BOM is stripped, so the unclosed quote behind it is still reported
+  bom <- rawToChar(as.raw(c(0xef, 0xbb, 0xbf, 0x22, 0x61, 0x0a)))
+  expect_error(read_csv(text = bom), "opens a quote that is never closed", fixed = TRUE)
+
+  # "bytes"-marked input is taken as bytes too
+  marked <- lines
+  Encoding(marked) <- "bytes"
+  expect_identical(read_csv(text = marked), read_csv(path))
+})

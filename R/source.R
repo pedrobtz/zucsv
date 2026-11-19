@@ -16,10 +16,7 @@ zucsv_source <- function(file, text) {
       stop("`text` must be a character vector with no missing values.",
            call. = FALSE)
     }
-    # UTF-8 first: paste() converts to the native encoding, and in a C locale
-    # that turned a non-ASCII character into an escape such as "<e9>" (#57).
-    # Given UTF-8, it keeps UTF-8. C translates the result once more.
-    return(list(file = NULL, text = paste(enc2utf8(text), collapse = "\n")))
+    return(list(file = NULL, text = paste(zucsv_text_utf8(text), collapse = "\n")))
   }
 
   if (!is.character(file) || length(file) != 1L || is.na(file)) {
@@ -65,4 +62,28 @@ zucsv_check_na <- function(na) {
     }
   }
   invisible(na)
+}
+
+# text elements as UTF-8, before paste(): paste() converts to the native
+# encoding, and in a C locale that turned a non-ASCII character into an
+# escape such as "<e9>" (#57). Given UTF-8, paste() keeps the bytes.
+#
+# A declared encoding (latin1, UTF-8) is translated. An unmarked string is in
+# the native encoding, so in a Latin-1 locale it is translated too. In any
+# other locale its bytes are taken as UTF-8, as a file's are: in a UTF-8
+# locale that is what they are, and in a C locale enc2utf8() would escape
+# them, so readLines() output read back as "<c3><a9>" (#60). "bytes" means
+# raw bytes, taken the same way. C validates every cell as UTF-8, so bytes
+# that are not UTF-8 are an error, as in a file.
+zucsv_text_utf8 <- function(text) {
+  enc <- Encoding(text)
+  as_bytes <- enc == "bytes" | (enc == "unknown" & !isTRUE(l10n_info()[["Latin-1"]]))
+  out <- text
+  if (any(as_bytes)) {
+    raw <- text[as_bytes]
+    Encoding(raw) <- "UTF-8"
+    out[as_bytes] <- raw
+  }
+  if (any(!as_bytes)) out[!as_bytes] <- enc2utf8(text[!as_bytes])
+  out
 }

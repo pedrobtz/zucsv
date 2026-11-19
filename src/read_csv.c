@@ -265,9 +265,6 @@ static void zucsv_check_forced(zucsv_type type, const struct zsv_cell *c, double
            zucsv_col_label(names, j, label, sizeof(label)), zucsv_type_name(type), shown);
 }
 
-/* Shape errors that apply to any record, checked before its width is known
-   to be right. `record` is 1-based as the parser emits records, header
-   included (design SS10). */
 /* A record zsv truncated is an error at that record, checked before any of
    its cells is looked at: the cells it handed over are a prefix of the
    record, and the records after it are the rest of the same line (#28). */
@@ -284,10 +281,19 @@ static void zucsv_check_unclosed(const zucsv_reader *r, double record, size_t n,
                                  SEXP names) {
   if (!r->unclosed)
     return;
-  char label[64];
-  R_xlen_t j = n ? (R_xlen_t)n - 1 : 0;
+  /* Called with n = 0 only after the loop, as a backstop: the flag arrives
+     with the record that holds the open cell, so this is not expected. */
+  if (n == 0)
+    Rf_error("CSV row %.0f opens a quote that is never closed", record);
+  R_xlen_t j = (R_xlen_t)n - 1;
+  /* A real name only: the header record has none yet, and a cell past the
+     header's width has none, so neither gets an invented V<n> (as
+     zucsv_check_text does). */
+  if (names == R_NilValue || j >= XLENGTH(names))
+    Rf_error("CSV row %.0f, column %d opens a quote that is never closed", record,
+             (int)(j + 1));
   Rf_error("CSV row %.0f, column %d (\"%s\") opens a quote that is never closed", record,
-           (int)(j + 1), zucsv_col_label(names, j, label, sizeof(label)));
+           (int)(j + 1), Rf_translateChar(STRING_ELT(names, j)));
 }
 
 /* Interrupt checks by records and by bytes (ZUCSV_INTERRUPT_BYTES, #31).
@@ -303,9 +309,13 @@ static void zucsv_maybe_interrupt(zsv_parser parser, double record, size_t *next
   }
 }
 
+/* Shape errors that apply to any record, checked before its width is known
+   to be right. `record` is 1-based as the parser emits records, header
+   included (design SS10). */
 static void zucsv_check_shape(size_t n, double record) {
-  /* A zero-cell record is how an oversize row reaches us: the parser drops
-     it silently and reports nothing (design SS15). */
+  /* A zero-cell record was zsv's only sign of an oversize row until #28;
+     zucsv_check_truncated() now reports every oversize row first, so this
+     stays as a backstop, not as the detector. */
   if (n == 0)
     Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
              (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
