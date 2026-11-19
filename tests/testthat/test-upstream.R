@@ -56,7 +56,10 @@ test_that("a quote never closed is an error naming where it opened (#30)", {
     list("a\n\"", msg(2, 1, "a")),
     # an escaped quote is not a closing one
     list("a\n\"ab\"\"", msg(2, 1, "a")),
-    list("\"a,b\n1,2\n", msg(1, 1, "V1"))
+    # the header record has no names yet, so none is invented
+    list("\"a,b\n1,2\n", "CSV row 1, column 1 opens a quote that is never closed"),
+    # nor for a cell past the header's width
+    list("a,b\n1,2,3,\"x\n", "CSV row 2, column 4 opens a quote that is never closed")
   )
   for (case in cases) {
     expect_error(read_text(case[[1]]), case[[2]], fixed = TRUE, info = case[[1]])
@@ -93,4 +96,40 @@ test_that("a quote in the middle of an unquoted cell is passed through", {
 test_that("ragged rows reach zucsv rather than being repaired", {
   expect_error(read_text("a,b\n1,2,3\n"), "has 3 fields; expected 2")
   expect_error(read_text("a,b\n1\n"), "has 1 field; expected 2")
+})
+
+test_that("quotes at the 8 MiB chunk boundary close and unescape as anywhere else (#30, #45)", {
+  skip_unless_stress() # files of 8 MiB
+  # The parser reads 8 MiB at a time. A quote that is a chunk's last byte is
+  # QUOTE_PENDING until the next chunk; tools/patches/0003 and 0004 depend on
+  # that state. Short rows fill the file up to the boundary, so the quote of
+  # interest lands at byte `chunk + shift` in a record well under the limit.
+  chunk <- 8L * 1024L * 1024L
+  filler <- function(n) {
+    # rows of exactly n bytes in all, n >= 3
+    if (n %% 2L) paste0("yy\n", strrep("y\n", (n - 3L) %/% 2L)) else strrep("y\n", n %/% 2L)
+  }
+  for (shift in -2:2) {
+    # the quote at offset q = nchar(head) + nchar('"x') is byte chunk + shift
+    head <- paste0("a\n", filler(chunk + shift - 2L - 2L))
+    expect_identical(nchar(head) + 2L, chunk + shift)
+    tail_of <- function(df) df$a[nrow(df)]
+
+    closed <- with_big_file(paste0(head, "\"x\"\nb\n"), function(p) read_csv(p))
+    expect_identical(closed$a[nrow(closed) - 1L], "x", info = shift)
+    expect_identical(tail_of(closed), "b", info = shift)
+
+    at_end <- with_big_file(paste0(head, "\"x\""), function(p) read_csv(p))
+    expect_identical(tail_of(at_end), "x", info = shift)
+
+    escaped <- with_big_file(paste0(head, "\"x\"\"y\"\n"), function(p) read_csv(p))
+    expect_identical(tail_of(escaped), "x\"y", info = shift)
+    escaped_end <- with_big_file(paste0(head, "\"x\"\"\""), function(p) read_csv(p))
+    expect_identical(tail_of(escaped_end), "x\"", info = shift)
+
+    expect_error(
+      with_big_file(paste0(head, "\"x\"\""), function(p) read_csv(p)),
+      "opens a quote that is never closed", fixed = TRUE, info = shift
+    )
+  }
 })

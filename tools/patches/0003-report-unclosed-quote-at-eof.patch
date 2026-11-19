@@ -8,9 +8,9 @@
 #
 # This adds one diagnostic, in the same form as the existing "row %zu
 # truncated" warning, and changes nothing else: the cell is still closed
-# virtually and parsing continues as before. A quote that is the last byte of
-# the input is the cell's closing quote, which the scanner marks
-# QUOTE_PENDING, so it is not reported. zucsv's errprintf sink turns the
+# virtually and parsing continues as before. A closing quote that is the last
+# byte of the input is marked QUOTE_PENDING by the scanner, so it is not
+# reported; an opening quote there (a lone `"`) is. zucsv's errprintf sink turns the
 # message into an error naming the row and column.
 #
 # Upstream: to be reported to liquidaty/zsv as a request for an unclosed-quote

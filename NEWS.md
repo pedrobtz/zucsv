@@ -21,8 +21,10 @@ correctly or reported:
   `"x"""` read as `x""` instead of `x"` (#45).
 
 * `text =` keeps non-ASCII characters in a session whose locale is not
-  UTF-8. Before, in a C locale, `"\u00e9"` read as the four characters
-  `<e9>` (#57).
+  UTF-8, `readLines()` output included. Before, in a C locale, `"\u00e9"` read
+  as the characters `<c3><a9>` or `<e9>`, with no error. Unmarked strings
+  are now taken as UTF-8 bytes there, as a file's bytes are, so bytes that are
+  not UTF-8 are an error (#57, #60).
 
 * A one-byte delimiter that is not ASCII, such as a latin1 `"\xe9"`, is
   rejected with "`delimiter` must be a single ASCII byte." instead of R's

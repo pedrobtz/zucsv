@@ -619,8 +619,8 @@ column; in the last column the record has the right width and the rest of
 the file is lost silently. So `tools/patches/0003` makes the parser report
 the case through `errprintf`, and `zucsv` raises
 `CSV row <r>, column <c> ("<name>") opens a quote that is never closed`
-(decided 2026-11-19 by the maintainer, #30). A quote that is the input's last
-byte is a closing quote, not an open one. The same end-of-input fix-up once
+(decided 2026-11-19 by the maintainer, #30). A closing quote that is the
+input's last byte is not an open one; an opening quote there is. The same end-of-input fix-up once
 kept that closing quote in a cell holding an escaped `""` (#45), which
 `tools/patches/0004` corrects.
 
