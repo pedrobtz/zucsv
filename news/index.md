@@ -2,6 +2,8 @@
 
 ## zucsv 0.1.1
 
+CRAN release: 2026-11-24
+
 ### Bug fixes
 
 Several inputs read as a wrong table with no error. Each is now read
