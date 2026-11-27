@@ -9,3 +9,5 @@ src/Makevars.win
 src/libzucsv.a
 tools/capi/build*/
 .check-consumer/
+tools/zucsvlink/src/Makevars
+tools/zucsvlink/src/Makevars.win
