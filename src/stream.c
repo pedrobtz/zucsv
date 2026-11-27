@@ -14,11 +14,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "zuarrow.h"
+/* The builders, as zuarrow installs them (LinkingTo: zuarrow). The R-free
+   C suite and the fuzz harness compile nanoarrow from zuarrow's source tree
+   instead, where the same file is vendor/nanoarrow/nanoarrow.h. */
+#ifdef ZUCSV_NANOARROW_SOURCE
+#include "nanoarrow.h"
+#else
 #include "zuarrow/nanoarrow.h"
-
-#if !defined(ZUARROW_ABI_VERSION) || ZUARROW_ABI_VERSION != 1
-#error "zucsv's stream is written against zuarrow's ABI 1"
 #endif
 
 typedef struct {

@@ -6,7 +6,7 @@ Six stages, each ending in a green `R CMD check` on the three CI platforms. A st
 
 Rough sizing: 0 and 5 are small, 1 depends on what the vendored code audit turns up, 2–4 are the bulk of the work.
 
-**Progress:** Stages 0–5 are complete. 0.1.0 was published on CRAN on 2026-10-16 from `1cc69d9`, the resubmission after CRAN's `Authors@R` request; the tag `0.1.0` and its GitHub release were created on 2026-11-19; `main` is `0.1.0.9000` and the next release is v0.1.1 ([#13](https://github.com/pedrobtz/zucsv/issues/13)).
+**Progress:** Stages 0–5 are complete; Stage 6, the C API (#23), was added after 0.1.1. 0.1.0 was published on CRAN on 2026-10-16 from `1cc69d9`, the resubmission after CRAN's `Authors@R` request; the tag `0.1.0` and its GitHub release were created on 2026-11-19; `main` is `0.1.0.9000` and the next release is v0.1.1 ([#13](https://github.com/pedrobtz/zucsv/issues/13)).
 Findings from the finished stages have been folded back into
 `zucsv-design.md`; `tools/zsv-behavior.md` is the record of what the vendored
 parser actually does.
@@ -157,6 +157,33 @@ parser actually does.
 
 - Package visible on CRAN; check results page green (or all NOTEs explained).
 - Tag pushed, `NEWS.md` matches the released version.
+
+---
+
+## Stage 6 — C API for other packages
+
+**Issue.** [#23](https://github.com/pedrobtz/zucsv/issues/23). **Pull request.** see the PR that closes #23. **CI.** `full`: it changes the build (a `configure` script, a static archive, `LinkingTo: zuarrow`) and adds a fixture that must build on Linux, macOS and Windows. **Done.** 2026-11-27.
+
+Added 2026-11-27, after 0.1.1, for zugodb's Stage 10 (pedrobtz/zugodb#60). Design §30 is its specification; decisions 24 to 28 its choices.
+
+**Goal:** `read_csv()` as an Arrow C stream that another package links from a static archive, with no R at run time, whose values are `read_csv()`'s.
+
+**Work**
+
+- An R-free core (`src/core.c`): pass 1 and a pass-2 cursor, returning codes and `read_csv()`'s messages; `read_csv()` and `sniff_csv()` become its clients, unchanged in what they return.
+- `convert.c` without R: the converter mode an argument, the power tables constant; `zucsv_strtod_probe()` in `inst/include/zucsv-r.h`, which `R_init_zucsv` and every consumer call once.
+- `src/stream.c`: `zucsv_open_stream()`, batches built with zuarrow's nanoarrow (`LinkingTo: zuarrow`, `./configure` links `libzuarrow.a`).
+- zsv's symbols hidden (patch 0006, `-DZSV_EXPORT=`, `$(C_VISIBILITY)`); `libzucsv.a` installed to `lib${R_ARCH}`; `inst/include/zucsv.h` with `ZUCSV_ABI_VERSION`.
+- `tools/zucsvlink` and `tools/ci/consumer.sh` (`consumer.yaml`); `tools/capi`, the R-free C suite under ASan, UBSan and TSan; `tools/capi/fuzz.c` (`fuzz.yaml`).
+
+**Exit criteria**
+
+- The fixture, with only `LinkingTo`, builds on Linux, macOS and Windows and reads a file through the entry point (`consumer.yaml`, full profile).
+- The stream's values equal `read_csv()`'s for the same file and options, doubles bit for bit (`test-stream.R`, the fixture's `test-consume.R`).
+- The entry point runs on threads that are not R's under ThreadSanitizer with no report (`tools/capi`, `make tsan`, with its negative control).
+- `R CMD check` and the full CI set green; `read_csv()` and `sniff_csv()` return what they returned (the existing suite, unchanged).
+
+**Open.** The next CRAN release waits for zuarrow's C API on CRAN, or for the stream to become optional (design §30, open question 1).
 
 ---
 

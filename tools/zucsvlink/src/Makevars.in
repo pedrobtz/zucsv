@@ -1,0 +1,14 @@
+# Generated into src/Makevars by ../configure (src/Makevars.win by
+# ../configure.win) on every install; do not edit the generated file.
+#
+# No include path: LinkingTo: zucsv adds <zucsv>/include (zucsv.h,
+# zucsv-r.h) and LinkingTo: zuarrow adds <zuarrow>/include (zuarrow.h, for
+# the Arrow structs). Hidden visibility, so nothing linked from the archives
+# is exported from this package's shared object.
+PKG_CFLAGS = $(C_VISIBILITY) @PTHREAD@
+
+# libzucsv.a first, then libzuarrow.a, whose nanoarrow builders it calls:
+# a static linker resolves left to right. Single-quoted: a library path
+# with a space (the Windows user library) would otherwise reach the linker
+# as two arguments.
+PKG_LIBS = '@ZUCSV_LIB@/libzucsv.a' '@ZUARROW_LIB@/libzuarrow.a' @PTHREAD@

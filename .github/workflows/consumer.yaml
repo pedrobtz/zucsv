@@ -1,0 +1,131 @@
+# The C API of #23, from the outside (family rule R10.4).
+#
+# - `linux`, `other`: tools/zucsvlink, a package with only LinkingTo:
+#   zucsv, zuarrow, probes the double converter at load, links the
+#   installed libzucsv.a and libzuarrow.a, reads CSV files through
+#   zucsv_open_stream() on a thread that is not R's, and runs with zucsv
+#   and zuarrow moved out of the library. tools/ci/consumer.sh is the whole
+#   check; this file only gives it R on each system.
+# - `capi`: tools/capi, the R-free C suite: the core and the stream built
+#   with no R at all, under ASan and UBSan, under ThreadSanitizer (eight
+#   threads, none of them R's) with its negative control, and the fuzz
+#   harness replayed over its seed corpus. nanoarrow comes from a zuarrow
+#   checkout at the commit DESCRIPTION's Remotes pins; keep the two equal.
+#
+# Linux on every code change; macOS and Windows in the full profile (a
+# `full-ci` pull request, the schedule, a dispatch), so a quick pull request
+# takes no macOS runner. Whether a pull request runs at all is r-actions'
+# `changes` gate: prose skips it, and so does a pull request labelled
+# `skip-ci:consumer`, `ci:docs` or `ci:minimal`.
+on:
+  # No `push:`: a pull request already checks its merge with the base, and
+  # the schedule checks main (r-actions README, "Pushes to main").
+  pull_request:
+    # `labeled`/`unlabeled` so that adding or removing a CI label reruns it.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  schedule:
+    - cron: "24 20 * * 6"
+  workflow_dispatch:
+
+name: consumer
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  ZUARROW_SHA: 6e820a679629913656a618aea8193cc4e64f2258
+
+jobs:
+  changes:
+    uses: pedrobtz/r-actions/.github/workflows/changes.yml@v1
+    with:
+      name: consumer
+
+  linux:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    runs-on: ubuntu-latest
+    name: consumer fixture (ubuntu-latest)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # zucsv's hard dependencies (zuarrow, from Remotes) and testthat;
+      # never zucsv itself, which tools/ci/consumer.sh installs from this
+      # checkout and then hides.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: any::testthat
+
+      - name: the consumer fixture
+        run: bash tools/ci/consumer.sh
+
+  capi:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    runs-on: ubuntu-latest
+    name: C API without R (ASan, UBSan, TSan)
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/checkout@v6
+        with:
+          repository: pedrobtz/zuarrow
+          ref: ${{ env.ZUARROW_SHA }}
+          path: .zuarrow
+
+      - name: warnings as errors
+        run: make -C tools/capi ZUARROW=../../.zuarrow CC=clang CFLAGS='-O2 -g -Werror'
+
+      - name: ASan and UBSan
+        run: make -C tools/capi ZUARROW=../../.zuarrow CC=clang asan
+
+      # The thread contract (zucsv.h): eight threads, none of them R's,
+      # each with streams of its own, under ThreadSanitizer; then the
+      # negative control, which shares one stream between two threads and
+      # passes only if TSan reports it.
+      - name: ThreadSanitizer
+        run: |
+          make -C tools/capi ZUARROW=../../.zuarrow CC=clang tsan
+          make -C tools/capi ZUARROW=../../.zuarrow CC=clang tsan-negative
+
+      - name: the fuzz harness over its seed corpus, under ASan
+        run: |
+          make -C tools/capi ZUARROW=../../.zuarrow CC=clang BUILD=build-asan \
+            SAN='-fsanitize=address,undefined -fno-sanitize-recover=all' replay
+
+  other:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && needs.changes.outputs.profile == 'full' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: consumer fixture (${{ matrix.os }})
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: any::testthat
+
+      - name: the consumer fixture
+        shell: bash
+        run: bash tools/ci/consumer.sh

@@ -7,3 +7,5 @@ bench/results.rds
 src/Makevars
 src/Makevars.win
 src/libzucsv.a
+tools/capi/build*/
+.check-consumer/

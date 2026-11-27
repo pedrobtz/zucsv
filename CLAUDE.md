@@ -17,9 +17,16 @@ sessions do not load the plugin and run without them.
 ## What this is
 
 `zucsv` reads CSV files into data frames. `read_csv()` in
-[R/read_csv.R](R/read_csv.R) is a thin wrapper over the C reader in
-`src/read_csv.c` and `src/convert.c`, built on the vendored parser under
-`src/vendor/zsv/`. Base R C API only, no runtime R package dependencies.
+[R/read_csv.R](R/read_csv.R) is a thin wrapper over the C reader: the
+R-free core in `src/core.c` and `src/convert.c`, built on the vendored
+parser under `src/vendor/zsv/`, and `src/read_csv.c`, which turns the core's
+rows into R vectors. Base R C API only, no runtime R package dependencies.
+
+Since #23 the same core is also a C API for other packages (design §30):
+`zucsv_open_stream()` in `inst/include/zucsv.h` reads a file as an Arrow C
+stream (`src/stream.c`), linked from `libzucsv.a`, which the package
+installs in `lib/`. Its arrays are built with zuarrow's bundled nanoarrow,
+so zuarrow is a build-time dependency (`LinkingTo`, pinned by `Remotes:`).
 
 The full design document is
 [.agents/zucsv-design.md](.agents/zucsv-design.md) and the staged plan is
@@ -59,7 +66,10 @@ as sub-issues. CRAN's cadence opens on 2026-11-27, six weeks after publication
 submission is allowed, not a plan to submit. Sibling packages that depend on
 this one: `zumime` (on CRAN, `Suggests: zucsv`; it calls `sniff_csv()` on
 arbitrary files inside `tryCatch()`, so a new error for malformed input
-leaves its result unchanged). Check it against every release.
+leaves its result unchanged). Check it against every release. `zugodb`
+links the C API (`LinkingTo: zucsv`, its Stage 10, pedrobtz/zugodb#60):
+a change to `zucsv.h`, `zucsv-r.h` or what the stream delivers is a change
+to its contract, and an incompatible one bumps `ZUCSV_ABI_VERSION`.
 
 Any new vendored file that names an author means a new `Authors@R` entry:
 CRAN asked for every one by name.
@@ -75,12 +85,17 @@ R CMD build . && R CMD check --as-cran zucsv_*.tar.gz
 ZUCSV_STRESS=true Rscript -e 'devtools::test()'   # stress tests where NOT_CRAN is unset
 Rscript bench/bench.R [reps]            # two-pass overhead vs read.csv()
 tools/update-zsv.sh <commit-ish>        # re-vendor zsv, re-apply patches
+bash tools/ci/consumer.sh               # the consumer fixture, tools/zucsvlink
+make -C tools/capi ZUARROW=<zuarrow checkout> [tsan|tsan-negative|asan|replay] CC=clang
 Rscript tools/update-csv-spectrum.R     # regenerate test-spectrum.R
 Rscript tools/check-csv-test-data.R     # csv-test-data conformance check
 ```
 
 After editing C sources, `devtools::load_all()` recompiles; use
-`R CMD INSTALL --preclean .` when object files go stale.
+`R CMD INSTALL --preclean .` when object files go stale, and always after
+changing `src/Makevars.in`: `src/Makevars` and `src/Makevars.win` are
+written from it by `./configure` (which finds zuarrow's `libzuarrow.a`) and
+are not in git, and make does not rebuild objects when they change.
 
 ## Architecture
 
@@ -94,6 +109,12 @@ zucsv owns R semantics     →  NA matching, column types, data.frame
 
 Consequences that shape most implementation decisions:
 
+- **The core is R-free** (`src/core.c`, `src/convert.c`, `src/stream.c`):
+  no R header, no R call, no mutable global, since they are what
+  `libzucsv.a` holds and run on consumers' threads. A check returns an
+  errno code and leaves `read_csv()`'s message in the core; `read_csv()`
+  raises it. `tests/testthat/test-abi.R` and `tools/capi` (which builds
+  them with no R on the include path) enforce it.
 - **Base R C API only, via `.Call`.** No Rcpp, no cpp11, no runtime R package
   dependencies. Native symbols get registered in `src/init.c` with dynamic
   symbol lookup disabled; `R/zucsv-package.R` carries the
@@ -119,9 +140,17 @@ the package name is the namespace.
   row, or an embedded NUL is an error carrying row, column, and column-name
   context. Raw `zsv` status codes stay internal.
 - **Long jumps are the hazard.** Every `FILE *`, `zsv_parser`, and native
-  allocation must be released on R errors as well as on success
-  (`R_UnwindProtect()` or an equivalent discipline), and the row loop calls
-  `R_CheckUserInterrupt()` periodically (about every 16k rows), not per row.
+  allocation hangs off the `zucsv_core`, which the `R_UnwindProtect()`
+  cleanup closes on R errors as well as on success, and the core's progress
+  hook, which `read_csv()` points at `R_CheckUserInterrupt()`, runs
+  periodically (about every 16k rows), not per row (design §16).
+- **The double converter's mode is never found lazily.** It is probed once
+  by `zucsv_strtod_probe()` (`inst/include/zucsv-r.h`) from `R_init_zucsv`,
+  as every consumer does, and passed to each read (design decision 25).
+- **`libzucsv.a` holds no zuarrow object**: a consumer links it and then
+  `libzuarrow.a`. The zuarrow commit is pinned in four places that must
+  agree: DESCRIPTION's `Remotes:`, and `consumer.yaml`, `fuzz.yaml` and the
+  rchk job in `native-checks.yaml`.
 - **Never build against a system `zsv`.**
 - **R-specific adaptation belongs in `zucsv`'s own `src/` files**, never in
   `src/vendor/`. The only changes to upstream are the patches in
@@ -139,6 +168,10 @@ the package name is the namespace.
   `tools/check-csv-test-data.R` clones it at run time. Every fixture has a
   recorded expectation there, including the ones where zucsv deliberately
   differs, each with the design section that decides it.
+- **`test-stream.R` holds the Arrow stream to `read_csv()`** (identical,
+  doubles bit for bit, every error's message), and `test-abi.R` the archive
+  and the shared object to their symbol tables (helpers from zuarrow's).
+  `same_bits()` compares NaN bits too (`single.NA = FALSE`).
 - **`test-upstream.R` pins the vendored parser's edge behaviour** recorded
   in `tools/zsv-behavior.md`; it is what catches a change on re-vendoring.
 - **`test-differential.R` compares with `utils::read.csv()`** where the
@@ -191,9 +224,17 @@ weekly in zucsv's Saturday slot: R-CMD-check at 20:04 UTC, coverage at
   write token; the badge goes to `gh-pages`. `pkgdown.yaml` deploys the site
   on pushes to `main` and on releases.
 
-**Deviation from the shared `ci.md` rules:** no workflow calls `changes.yml`.
-Every job calls an r-actions workflow, which classifies a docs-only change
-itself, so none needs the `changes` gate. There is no `analyzers` job yet.
+- `consumer.yaml` (#23) is the package's own workflow, gated by
+  `changes.yml`: the consumer fixture (`tools/ci/consumer.sh`) on Linux,
+  and on macOS and Windows in the full profile, and the R-free C suite
+  (`tools/capi`) under ASan, UBSan and ThreadSanitizer with its negative
+  control. `fuzz.yaml` calls r-actions' `fuzz.yml` with
+  `tools/capi/fuzz.c`: two minutes on a pull request, an hour on the
+  schedule.
+
+**Deviation from the shared `ci.md` rules:** only `consumer.yaml` calls
+`changes.yml`. Every other job calls an r-actions workflow, which
+classifies a docs-only change itself. There is no `analyzers` job yet.
 
 ## Vendored native code
 
@@ -219,6 +260,9 @@ Local patches, in `tools/patches/`:
 - `0005-vector-scan-mask-base.patch`: places the vector scan's tokens
   relative to the vector that holds them, which removes a quadratic rescan
   (#31).
+- `0006-overridable-export-visibility.patch`: lets `-DZSV_EXPORT=` give
+  zsv's functions the build's hidden visibility, so `libzucsv.a` exports
+  nothing from a consumer's shared object (#23).
 
 0003 to 0005 fix upstream behaviour and are to be reported to
 `liquidaty/zsv`. Drop each one when upstream fixes it. zucsv also relies on

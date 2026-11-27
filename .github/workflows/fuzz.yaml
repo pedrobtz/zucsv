@@ -1,0 +1,71 @@
+# The R-free core and stream under libFuzzer (#23, design SS21): CSV bytes
+# through zucsv_open_stream_text() with the header given, absent and
+# detected, held to the oracle in tools/capi/fuzz.c -- pass 2 delivers the
+# rows and columns pass 1 counted, and the stream equals a second read and
+# a read in batches of three -- under ASan and UBSan.
+#
+# nanoarrow is compiled from zuarrow's source tree at the commit
+# DESCRIPTION's Remotes pins (keep the two equal), as zuarrow builds it
+# into libzuarrow.a. The seeds are tools/capi/corpus.
+#
+# A pull request fuzzes for two minutes, as zuarrow's does, whatever its
+# labels; the schedule and a dispatch run an hour and keep going after a
+# finding.
+on:
+  # `labeled`/`unlabeled` so that adding or removing a CI label reruns it.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  schedule:
+    - cron: "29 20 * * 6"
+  workflow_dispatch:
+
+name: fuzz
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    uses: pedrobtz/r-actions/.github/workflows/fuzz.yml@v1
+    with:
+      harness: tools/capi/fuzz.c
+      sources: |
+        src/core.c
+        src/convert.c
+        src/stream.c
+        src/vendor/zsv/src/zsv.c
+        .github-packages/zuarrow/src/vendor/nanoarrow/nanoarrow.c
+      cflags: >-
+        -g -O1 -fno-omit-frame-pointer
+        -DZSV_EXPORT= -DNANOARROW_DLL= -DNANOARROW_NAMESPACE=zuarrow
+        -DZUCSV_NANOARROW_SOURCE
+        -Isrc -Iinst/include -Isrc/vendor/zsv/include
+        -I.github-packages/zuarrow/src/vendor/nanoarrow
+      github-packages: |
+        pedrobtz/zuarrow@6e820a679629913656a618aea8193cc4e64f2258
+      seed-corpus: tools/capi/corpus
+      # A record is at most 8 MiB; inputs past a few records add nothing
+      # the short ones do not reach, and cost throughput.
+      libfuzzer-args: -max_len=65536 -timeout=10
+      max-total-time: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3600 || 120 }}
+      timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 75 || 30 }}
+      keep-going: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
+  # A red scheduled run files one issue per distinct finding, labelled fuzz.
+  report:
+    needs: fuzz
+    if: ${{ always() && github.event_name == 'schedule' && needs.fuzz.result != 'skipped' }}
+    permissions:
+      issues: write
+    uses: pedrobtz/r-actions/.github/workflows/report.yml@v1
+    with:
+      name: fuzz
+      result: ${{ needs.fuzz.result }}
+      finding: ${{ needs.fuzz.outputs.finding }}
+      key: ${{ needs.fuzz.outputs.finding-key }}
+      details: ${{ needs.fuzz.outputs.report }}
+      findings: ${{ needs.fuzz.outputs.findings }}
