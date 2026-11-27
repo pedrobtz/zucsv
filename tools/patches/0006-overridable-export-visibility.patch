@@ -1,0 +1,27 @@
+# Reason: let the build define ZSV_EXPORT, so zsv's symbols can be hidden
+#
+# zsv_export.h gives every public zsv function visibility("default") under
+# GCC and Clang whatever the build asks for, so -fvisibility=hidden does not
+# reach zsv_*. zucsv ships zsv inside libzucsv.a (#23), which other packages
+# link into their own shared objects; with default visibility each of them
+# would export zsv's API, and two of them loaded together could bind to each
+# other's copy. With this patch a -DZSV_EXPORT= on the command line wins and
+# the functions take the build's visibility, hidden in zucsv's.
+#
+# Upstream: not reported. Upstream builds zsv as its own library, where
+# exporting the API is the point; an override is a small, compatible
+# addition that could be offered.
+--- a/include/zsv/zsv_export.h	2026-11-27 22:04:05
++++ b/include/zsv/zsv_export.h	2026-11-27 22:04:05
+@@ -2,7 +2,10 @@
+ #define ZSV_EXPORT_H
+ 
+ // clang-format off
+-#ifdef __EMSCRIPTEN__
++/* zucsv: a definition from the build wins, so -DZSV_EXPORT= leaves zsv's
++ * functions to the build's visibility (-fvisibility=hidden). */
++#ifdef ZSV_EXPORT
++#elif defined(__EMSCRIPTEN__)
+ # include <emscripten.h>
+ # define ZSV_EXPORT EMSCRIPTEN_KEEPALIVE
+ #else

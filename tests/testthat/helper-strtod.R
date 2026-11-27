@@ -26,6 +26,8 @@ strtod_inputs <- function() {
     "18446744073709551615", "18446744073709551616", "1e22", "1e23", "1e27",
     "1e28", "1.7976931348623157e308", "1.8e308", "4.9e-324", "2.4e-324",
     "1e-307", "1e-308", "123e-310", "1.5e-310", "0e999",
+    # by name, so their bits are R's own constants
+    "NaN", "Inf", "-Inf", "+Inf",
     paste0("1", strrep("0", 300)), paste0("0.", strrep("1", 300)),
     paste0(sign, point, exponent)
   )
@@ -41,4 +43,7 @@ with_strtod_mode <- function(mode, code) {
   code
 }
 
-same_bits <- function(a, b) identical(a, b, num.eq = FALSE)
+# Bit for bit: num.eq = FALSE compares the bits of ordinary numbers, and
+# single.NA = FALSE those of NaN too, whose sign and payload identical()
+# otherwise treats as one value (#23).
+same_bits <- function(a, b) identical(a, b, num.eq = FALSE, single.NA = FALSE)

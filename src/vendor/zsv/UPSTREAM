@@ -1,7 +1,7 @@
 Upstream:  https://github.com/liquidaty/zsv.git
 Describe:  v1.4.3-41-g6195954
 Commit:    61959542b18581e38f291957d9a500fab77be719
-Vendored:  2026-11-19
+Vendored:  2026-11-27
 By:        tools/update-zsv.sh
 License:   MIT (see LICENSE in this directory)
 
@@ -20,3 +20,4 @@ Patches applied (tools/patches, in sorted order):
   0003-report-unclosed-quote-at-eof.patch  report a quote still open at end of input through errprintf
   0004-unescape-pending-quote-at-eof.patch do not keep the closing quote of an escaped last cell at end of input
   0005-vector-scan-mask-base.patch         take the vector scan's token bits relative to the vector that holds them
+  0006-overridable-export-visibility.patch let the build define ZSV_EXPORT, so zsv's symbols can be hidden

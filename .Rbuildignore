@@ -17,3 +17,9 @@
 ^\.worktrees$
 ^\.claude$
 ^AGENTS\.md$
+^src/Makevars$
+^src/Makevars\.win$
+\.a$
+^tools/zucsvlink$
+^tools/capi$
+^tools/ci$

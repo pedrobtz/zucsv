@@ -49,9 +49,9 @@
 
 #define ZUCSV_POW_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _pow10)
 #define ZUCSV_TBL_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _tbl)
-#define ZUCSV_FILL_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _fill)
+#define ZUCSV_TABLE_OK_NAME ZUCSV_CAT(ZUCSV_STRTOD_NAME, _table_ok)
 
-/* R's power loop, verbatim; also what fills the table. */
+/* R's power loop, verbatim; also what the table is checked against. */
 static ZUCSV_ACC ZUCSV_POW_NAME(int k) {
   ZUCSV_ACC p10 = 10., fac = 1.0;
   for (; k; k >>= 1, p10 *= p10)
@@ -60,16 +60,34 @@ static ZUCSV_ACC ZUCSV_POW_NAME(int k) {
   return fac;
 }
 
-/* Filled once by zucsv_numeric_init() from R_init_zucsv(), then read-only.
-   Not lazily initialised: a mutable static written on first use would be a
-   data race the moment conversion runs on worker threads, and it costs a
-   branch in the hot path besides. */
-static ZUCSV_ACC ZUCSV_TBL_NAME[ZUCSV_ACC_EXACT_POW + 1];
+/* The exact powers 10^0 .. 10^ZUCSV_ACC_EXACT_POW, as constants. Each is
+   exactly representable in the accumulator (5^k fits its mantissa), so the
+   literal is the value R's loop computes; ZUCSV_TABLE_OK_NAME() checks that
+   on the machine at hand, and zucsv_strtod_usable() refuses the fast
+   instance where it fails. Constant rather than filled at load (#23): the
+   archive holds no mutable global, and nothing has to run before a read. */
+#ifndef ZUCSV_STRTOD_NO_FASTPATH
+static const ZUCSV_ACC ZUCSV_TBL_NAME[] = {
+  1e0L,  1e1L,  1e2L,  1e3L,  1e4L,  1e5L,  1e6L,  1e7L,  1e8L,  1e9L,
+  1e10L, 1e11L, 1e12L, 1e13L, 1e14L, 1e15L, 1e16L, 1e17L, 1e18L, 1e19L,
+  1e20L, 1e21L, 1e22L
+#if ZUCSV_ACC_EXACT_POW > 22
+  , 1e23L, 1e24L, 1e25L, 1e26L, 1e27L
+#endif
+};
+#define ZUCSV_POW_FAST(k) (k <= ZUCSV_ACC_EXACT_POW ? ZUCSV_TBL_NAME[k] : ZUCSV_POW_NAME(k))
 
-static void ZUCSV_FILL_NAME(void) {
-  for (int k = 0; k <= ZUCSV_ACC_EXACT_POW; k++)
-    ZUCSV_TBL_NAME[k] = ZUCSV_POW_NAME(k);
+static int ZUCSV_TABLE_OK_NAME(void) {
+  for (int k = 0; k <= ZUCSV_ACC_EXACT_POW; k++) {
+    volatile ZUCSV_ACC want = ZUCSV_POW_NAME(k);
+    if (want != ZUCSV_TBL_NAME[k])
+      return 0;
+  }
+  return 1;
 }
+#else
+#define ZUCSV_POW_FAST(k) ZUCSV_POW_NAME(k)
+#endif
 
 static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int sign) {
   ZUCSV_ACC ans = 0.0;
@@ -126,17 +144,17 @@ static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int 
     ans *= fac;
   } else if (expn < 0) { /* positive powers are exact */
     k = -expn;
-    fac = (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) ? ZUCSV_TBL_NAME[k] : ZUCSV_POW_NAME(k);
+    fac = ZUCSV_POW_FAST(k);
     ans /= fac;
   } else if (ans != 0.0) { /* allow big exponents on 0, e.g. 0E4933 */
     k = expn;
-    fac = (ZUCSV_FASTPATH && k <= ZUCSV_ACC_EXACT_POW) ? ZUCSV_TBL_NAME[k] : ZUCSV_POW_NAME(k);
+    fac = ZUCSV_POW_FAST(k);
     ans *= fac;
   }
 
   /* explicit overflow to infinity */
   if (ans > DBL_MAX)
-    return sign > 0 ? R_PosInf : R_NegInf;
+    return sign > 0 ? INFINITY : -INFINITY;
 
   return sign * (double)ans;
 }
@@ -146,7 +164,8 @@ static double ZUCSV_STRTOD_NAME(const unsigned char *s, size_t n, size_t i, int 
 #undef ZUCSV_ACC_EXACT_POW
 #undef ZUCSV_POW_NAME
 #undef ZUCSV_TBL_NAME
-#undef ZUCSV_FILL_NAME
+#undef ZUCSV_POW_FAST
+#undef ZUCSV_TABLE_OK_NAME
 #undef ZUCSV_ACC
 #undef ZUCSV_ACC_MANT_DIG
 #undef ZUCSV_STRTOD_NAME

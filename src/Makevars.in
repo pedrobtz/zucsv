@@ -1,0 +1,57 @@
+# Generated into src/Makevars by ../configure (src/Makevars.win by
+# ../configure.win) on every install; edit this file, not those.
+#
+# No optimisation, architecture or diagnostic flags here: CRAN forbids them.
+# SIMD selection inside zsv is driven by the compiler's own baseline macros
+# (__AVX2__, __ARM_NEON, ...), so it adapts without -march.
+#
+# ../inst/include holds zucsv.h and zucsv-r.h, the public C API. LinkingTo:
+# zuarrow adds zuarrow's include directory: zuarrow.h and the nanoarrow
+# builders the stream uses (zuarrow/nanoarrow.h), already namespaced to
+# zuarrowArrow*. NANOARROW_DLL is defined empty so their declarations take
+# this build's hidden visibility, and ZSV_EXPORT empty so zsv's do too
+# (tools/patches/0006): R_init_zucsv is the only symbol the shared object
+# exports, and nothing in libzucsv.a is exported from a consumer's.
+PKG_CPPFLAGS = -I. -I../inst/include -Ivendor/zsv/include -DZSV_EXPORT= -DNANOARROW_DLL=
+PKG_CFLAGS = $(C_VISIBILITY)
+
+# The stream's builders, from the installed zuarrow (../configure finds it).
+# Single-quoted: a library path with a space (the Windows user library)
+# would otherwise reach the linker as two arguments.
+PKG_LIBS = '@ZUARROW_LIB@/libzuarrow.a'
+
+# vendor/zsv/src/zsv.c is a unity build that #includes the other vendored .c
+# files, so it is the only vendored object. Listed explicitly: src/Makevars
+# must work with a POSIX make, so no $(wildcard).
+CORE_OBJECTS = core.o convert.o stream.o vendor/zsv/src/zsv.o
+OBJECTS = init.o read_csv.o r_strtod.o r_stream.o $(CORE_OBJECTS)
+
+# ---------------------------------------------------------------------------
+# The LinkingTo surface (#23, design SS30): libzucsv.a, installed to
+# <pkg>/lib${R_ARCH} by src/install.libs.R beside the shared object.
+#
+# The same objects the shared object links: core.c, convert.c and stream.c
+# include no R header, and test-abi.R holds the archive to calling no R.
+# They are compiled with $(ALL_CFLAGS), which carries $(C_VISIBILITY) and
+# $(CPICFLAGS), so they are hidden and position independent and a consumer
+# links them into its own shared object without re-exporting them. The
+# archive holds none of zuarrow's objects: a consumer links libzucsv.a and
+# then libzuarrow.a, once.
+#
+# "all" must be the first target in this file: make takes the first target
+# as the default goal (Writing R Extensions 1.2.1).
+.PHONY: all zucsv-archive-clean
+
+all: $(SHLIB) libzucsv.a
+
+# The archive is not in OBJECTS, so R's shlib-clean would leave it, and an
+# in-tree rebuild would install a stale archive. A target without a recipe
+# adds prerequisites to R's rule.
+shlib-clean: zucsv-archive-clean
+
+zucsv-archive-clean:
+	rm -f libzucsv.a
+
+libzucsv.a: $(CORE_OBJECTS)
+	rm -f libzucsv.a
+	$(AR) rcs libzucsv.a $(CORE_OBJECTS)

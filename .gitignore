@@ -4,3 +4,6 @@ docs
 tests/testthat/_problems
 .Rproj.user
 bench/results.rds
+src/Makevars
+src/Makevars.win
+src/libzucsv.a

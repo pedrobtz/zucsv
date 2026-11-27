@@ -3,28 +3,19 @@
  * Everything here works on a {pointer, length} cell borrowed from the
  * parser's buffer: nothing is copied, and the cell is never modified. */
 
-#include "zucsv.h"
+#include "core.h"
 
-#include <R_ext/Arith.h> /* R_PosInf, R_NegInf, R_NaN */
-#include <R_ext/Utils.h> /* R_strtod, for calibration and as the fallback */
-#include <float.h>       /* DBL_MAX, LDBL_MANT_DIG, DBL_MANT_DIG */
-#include <stdint.h>      /* uint64_t */
+#include <float.h>  /* DBL_MAX, LDBL_MANT_DIG, DBL_MANT_DIG */
+#include <math.h>   /* INFINITY, NAN */
+#include <stdint.h> /* uint64_t */
 #include <string.h>
 
 int zucsv_is_na(const zucsv_na *na, const unsigned char *str, size_t len) {
-  for (R_xlen_t i = 0; i < na->n; i++) {
+  for (ptrdiff_t i = 0; i < na->n; i++) {
     if (na->len[i] == len && (len == 0 || memcmp(na->str[i], str, len) == 0))
       return 1;
   }
   return 0;
-}
-
-R_xlen_t zucsv_find_nul(const unsigned char *str, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    if (str[i] == '\0')
-      return (R_xlen_t)i;
-  }
-  return -1;
 }
 
 /* Both checks in one walk. The NUL scan alone measured 6.8 ns/cell against
@@ -215,17 +206,24 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
   return i == len; /* nothing left over: no trailing text, no whitespace */
 }
 
-/* Double conversion: R's own algorithm, transcribed, and self-checked.
+/* Double conversion: R's own algorithm, transcribed.
  *
  * R_strtod5 accumulates in LDOUBLE -- `long double` when R was built with
  * it, `double` otherwise -- and R exposes no macro saying which. Rather
- * than guess, strtod_body.h is instantiated for both types, and the first
- * call runs a few probe values through each instance and through R_strtod
- * itself. The instance that agrees bit-for-bit is used from then on; if
- * neither does, every cell goes through R_strtod (copy, terminate, call),
- * which is slower but cannot disagree. So the result is identical to
- * as.numeric() on every platform by construction -- design decision 5 --
- * including a no-long-double build, and arm64 where long double is double.
+ * than guess, strtod_body.h is instantiated for both types, and a probe
+ * runs a few values through each instance and through R_strtod itself:
+ * zucsv_strtod_probe() in inst/include/zucsv-r.h, which R_init_zucsv runs
+ * and so does every package that links libzucsv.a. The instance that
+ * agrees bit-for-bit is the mode a read is given; if none does, the mode
+ * is ZUCSV_STRTOD_CALL and every cell goes through R_strtod (copy,
+ * terminate, call: zucsv_core_as_double()), which is slower but cannot
+ * disagree. So the result is identical to as.numeric() on every platform
+ * by construction -- design decision 5 -- including a no-long-double
+ * build, and arm64 where long double is double.
+ *
+ * Nothing here knows the mode: it is an argument (#23). A static chosen at
+ * load would be one copy per shared object linking the archive, set only
+ * where R_init_zucsv ran.
  *
  * The transcription was verified bit-for-bit against R_strtod on 8,000,051
  * inputs: every cell of a 2M-cell file, 51 hand-picked cases covering each
@@ -246,10 +244,11 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
 #define ZUCSV_STRTOD_NAME zucsv_strtod_double
 #include "strtod_body.h"
 
-/* The same two instances with R's loops verbatim, no shortcuts. Never used
-   for reading: tests select them through C_strtod_mode() and require each
-   fast instance to agree with its verbatim twin bit for bit, which is the
-   check that the shortcuts are exact (#36). */
+/* The same two instances with R's loops verbatim, no shortcuts. Calibration
+   falls back to the long double one where long double is narrower at run
+   time than LDBL_MANT_DIG says; tests also select both through
+   C_strtod_mode() and require each fast instance to agree with its verbatim
+   twin bit for bit, which is the check that the shortcuts are exact (#36). */
 #define ZUCSV_STRTOD_NO_FASTPATH
 #define ZUCSV_ACC long double
 #define ZUCSV_ACC_MANT_DIG LDBL_MANT_DIG
@@ -262,45 +261,6 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
 #include "strtod_body.h"
 #undef ZUCSV_STRTOD_NO_FASTPATH
 
-/* The fallback, and what zucsv did before: R_strtod needs a terminator. */
-static double zucsv_strtod_call(const unsigned char *s, size_t n) {
-  char stack_buf[256];
-  char *buf = stack_buf;
-  if (n + 1 > sizeof(stack_buf)) {
-    buf = (char *)malloc(n + 1);
-    /* Nothing is held here, so an R error is safe; a silent NaN would be a
-       wrong value (design SS20, #36). */
-    if (!buf)
-      Rf_error("Ran out of memory converting a %lu-byte numeric cell", (unsigned long)n);
-  }
-  memcpy(buf, s, n);
-  buf[n] = '\0';
-  char *end;
-  double value = R_strtod(buf, &end);
-  if (buf != stack_buf)
-    free(buf);
-  return value;
-}
-
-enum {
-  ZUCSV_STRTOD_UNSET = -1,
-  ZUCSV_STRTOD_DOUBLE = 0,
-  ZUCSV_STRTOD_LDOUBLE = 1,
-  ZUCSV_STRTOD_CALL = 2,
-  ZUCSV_STRTOD_LDOUBLE_VERBATIM = 3, /* tests only */
-  ZUCSV_STRTOD_DOUBLE_VERBATIM = 4   /* tests only */
-};
-static int zucsv_strtod_mode = ZUCSV_STRTOD_UNSET;
-
-static int zucsv_same_bits(double a, double b) {
-  return memcmp(&a, &b, sizeof a) == 0;
-}
-
-/* Values on which long double and double accumulation give different bits
-   on x87, chosen from the cases the parity test found. Where the two types
-   are the same width both instances agree and the first is taken. */
-
-
 /* Probe values on which long double and double accumulation give different
    bits on x87: the cases the parity test found, plus the ends of the range
    where the scaling branches differ. */
@@ -309,14 +269,12 @@ static const char *const zucsv_probes[] = {
   "1e-307",   "1e-308",   "123e-310",  "1.5e-310", "4.9e-324",
   "1e22",     "1e23",     "1e27",      "1.7976931348623157e308"};
 
-/* Calibration calls the converters through these, and they must not be
-   inlined. Calling them directly from the loop below lets the compiler
-   unroll it and inline a copy of the converter per probe, which exhausts
-   its inlining budget and leaves zucsv_as_double() calling out of line
-   instead -- measured at 0.141s -> 0.201s on a 2M-cell numeric file, from
-   nothing but the length of this list. Forcing one out-of-line call site
-   here keeps the decision about the hot path independent of how many
-   probes we choose to have. */
+const char *zucsv_strtod_probe_value(int i) {
+  if (i < 0 || (size_t)i >= sizeof(zucsv_probes) / sizeof(*zucsv_probes))
+    return NULL;
+  return zucsv_probes[i];
+}
+
 /* The mantissa width long double has at run time: the number of bits for
    which 1 + 2^-(bits - 1) is still above 1. volatile keeps the compiler from
    folding it to LDBL_MANT_DIG. */
@@ -333,49 +291,29 @@ static int zucsv_ldouble_mant_dig(void) {
   return digits;
 }
 
-void zucsv_numeric_init(void) {
-
-  zucsv_strtod_ldouble_fill();
-  zucsv_strtod_double_fill();
-  zucsv_strtod_ldouble_verbatim_fill();
-  zucsv_strtod_double_verbatim_fill();
-
-  /* Probing goes through zucsv_as_double() rather than calling the two
-     instances directly. Each converter then keeps exactly one call site, so
-     the compiler's decision to inline it into the hot path cannot be
-     disturbed by how long this probe list is. Calling them from the loop
-     measured 0.141s -> 0.201s on a 2M-cell numeric file with 15 probes
-     against 7: the loop gets unrolled, a copy of the converter is inlined
-     per probe, and the inlining budget for zucsv_as_double() is spent. */
-  /* The candidates, in order of speed. The long double fast instance is a
-     candidate only when long double really carries LDBL_MANT_DIG bits at run
-     time: its shortcuts assume it (strtod_body.h), and an emulator may
-     compute long double in double precision while LDBL_MANT_DIG still says
-     64. valgrind does, and there the fast instance agreed with every probe
-     yet not with as.numeric() on random input. R's own R_strtod runs under
-     the same emulation, so the verbatim instance still matches it. */
-  const size_t nprobe = sizeof(zucsv_probes) / sizeof(*zucsv_probes);
-  const int candidates[] = {ZUCSV_STRTOD_LDOUBLE, ZUCSV_STRTOD_LDOUBLE_VERBATIM, ZUCSV_STRTOD_DOUBLE};
-  const int ld_exact = zucsv_ldouble_mant_dig() >= LDBL_MANT_DIG;
-
-  for (size_t c = 0; c < sizeof(candidates) / sizeof(*candidates); c++) {
-    if (candidates[c] == ZUCSV_STRTOD_LDOUBLE && !ld_exact)
-      continue;
-    zucsv_strtod_mode = candidates[c];
-    int ok = 1;
-    for (size_t p = 0; p < nprobe; p++) {
-      char *end;
-      double r = R_strtod(zucsv_probes[p], &end);
-      double got = zucsv_as_double((const unsigned char *)zucsv_probes[p], strlen(zucsv_probes[p]));
-      ok = ok && zucsv_same_bits(r, got);
-    }
-    if (ok)
-      return;
+/* A fast instance is usable when its shortcuts hold here: long double
+   really carries LDBL_MANT_DIG bits at run time (an emulator may compute
+   it in double precision while LDBL_MANT_DIG still says 64 -- valgrind
+   does, and there the fast instance agreed with every probe yet not with
+   as.numeric() on random input), and its constant power table is what R's
+   own loop computes on this machine. R's R_strtod runs under the same
+   emulation, so the verbatim instances need neither. */
+int zucsv_strtod_usable(int32_t mode) {
+  switch (mode) {
+  case ZUCSV_STRTOD_LDOUBLE:
+    return zucsv_ldouble_mant_dig() >= LDBL_MANT_DIG && zucsv_strtod_ldouble_table_ok();
+  case ZUCSV_STRTOD_DOUBLE:
+    return zucsv_strtod_double_table_ok();
+  case ZUCSV_STRTOD_CALL:
+  case ZUCSV_STRTOD_LDOUBLE_VERBATIM:
+  case ZUCSV_STRTOD_DOUBLE_VERBATIM:
+    return 1;
+  default:
+    return 0;
   }
-  zucsv_strtod_mode = ZUCSV_STRTOD_CALL;
 }
 
-double zucsv_as_double(const unsigned char *s, size_t n) {
+double zucsv_as_double(int mode, const unsigned char *s, size_t n) {
   int sign = 1;
   size_t i = 0;
   if (n > 0 && s[0] == '-') {
@@ -386,43 +324,30 @@ double zucsv_as_double(const unsigned char *s, size_t n) {
   }
 
   /* The two non-decimal spellings the grammar admits (design SS11). R
-     reaches the same values by name; NaN carries no sign in the grammar. */
+     reaches the same values by name; NaN carries no sign in the grammar.
+     R_NaN is the positive quiet NaN that NAN gives; test-strtod.R holds the
+     bits to as.numeric("NaN") on every platform (#23). */
   if (n - i == 3 && memcmp(s + i, "Inf", 3) == 0)
-    return sign > 0 ? R_PosInf : R_NegInf;
+    return sign > 0 ? INFINITY : -INFINITY;
   if (n == 3 && memcmp(s, "NaN", 3) == 0)
-    return R_NaN;
+    return NAN;
 
-  if (ZUCSV_UNLIKELY(zucsv_strtod_mode == ZUCSV_STRTOD_UNSET))
-    zucsv_numeric_init();
-
-  switch (zucsv_strtod_mode) {
+  switch (mode) {
   case ZUCSV_STRTOD_LDOUBLE:
     return zucsv_strtod_ldouble(s, n, i, sign);
   case ZUCSV_STRTOD_DOUBLE:
     return zucsv_strtod_double(s, n, i, sign);
   case ZUCSV_STRTOD_LDOUBLE_VERBATIM:
     return zucsv_strtod_ldouble_verbatim(s, n, i, sign);
-  case ZUCSV_STRTOD_DOUBLE_VERBATIM:
-    return zucsv_strtod_double_verbatim(s, n, i, sign);
   default:
-    return zucsv_strtod_call(s, n);
+    return zucsv_strtod_double_verbatim(s, n, i, sign);
   }
 }
 
-/* Tests only (#36): returns the mode in use, after calibration, and with a
-   non-NULL `mode` switches to it. 0 double, 1 long double, 2 R_strtod, 3 and
-   4 the verbatim long double and double instances. Not exported. */
-SEXP C_strtod_mode(SEXP mode) {
-  if (zucsv_strtod_mode == ZUCSV_STRTOD_UNSET)
-    zucsv_numeric_init();
-  int old = zucsv_strtod_mode;
-  if (mode != R_NilValue) {
-    if (TYPEOF(mode) != INTSXP || XLENGTH(mode) != 1 || INTEGER(mode)[0] < 0 ||
-        INTEGER(mode)[0] > ZUCSV_STRTOD_DOUBLE_VERBATIM)
-      Rf_error("'mode' must be a single integer from 0 to 4");
-    zucsv_strtod_mode = INTEGER(mode)[0];
-  }
-  return Rf_ScalarInteger(old);
+/* The probe's one route into the converters, out of line, so each instance
+   keeps its single call site in zucsv_as_double() (decision 19). */
+double zucsv_strtod_convert(int32_t mode, const char *s, size_t n) {
+  return zucsv_as_double(mode, (const unsigned char *)s, n);
 }
 
 /* ------------------------------------------------------------------ *
@@ -477,6 +402,19 @@ int zucsv_accepts(zucsv_type type, const unsigned char *str, size_t len) {
     return zucsv_is_double(str, len);
   default:
     return 0; /* character proves nothing about the bytes */
+  }
+}
+
+const char *zucsv_type_name(zucsv_type t) {
+  switch (t) {
+  case ZUCSV_LOGICAL:
+    return "logical";
+  case ZUCSV_INTEGER:
+    return "integer";
+  case ZUCSV_DOUBLE:
+    return "double";
+  default:
+    return "character";
   }
 }
 
