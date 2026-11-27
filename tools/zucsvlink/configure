@@ -1,0 +1,37 @@
+#!/bin/sh
+# Resolves the two static archives that LinkingTo cannot point at:
+# LinkingTo puts zucsv's and zuarrow's headers on the include path, but
+# there is no LinkingTo for a library, and an Imports: entry would add a
+# run-time dependency the archives exist to avoid. This is the wiring a
+# consumer of zucsv (zugodb) copies; it is zuarrow's tools/zuarrowlink's,
+# once per archive.
+set -eu
+
+: "${R_HOME:?configure must be run by R CMD INSTALL, which sets R_HOME}"
+RSCRIPT="${R_HOME}/bin/Rscript"
+
+# Each package installs its archive under R_ARCH: lib/x64 on Windows, lib
+# elsewhere. Asked for the arch-specific directory first, then the plain
+# one. r_arch has no leading slash where R_ARCH has one.
+archive_dir() {
+  "${RSCRIPT}" --vanilla -e "arch <- .Platform\$r_arch; d <- if (nzchar(arch)) system.file('lib', arch, package = '$1') else ''; if (!nzchar(d)) d <- system.file('lib', package = '$1'); cat(d)"
+}
+
+ZUCSV_LIB=$(archive_dir zucsv)
+ZUARROW_LIB=$(archive_dir zuarrow)
+
+if [ -z "${ZUCSV_LIB}" ] || [ ! -f "${ZUCSV_LIB}/libzucsv.a" ]; then
+  echo "configure: zucsv's lib/libzucsv.a was not found." >&2
+  echo "  It ships from zucsv's C API on (pedrobtz/zucsv#23)." >&2
+  exit 1
+fi
+if [ -z "${ZUARROW_LIB}" ] || [ ! -f "${ZUARROW_LIB}/libzuarrow.a" ]; then
+  echo "configure: zuarrow's lib/libzuarrow.a was not found." >&2
+  echo "  It ships from zuarrow's C API on (pedrobtz/zuarrow#251)." >&2
+  exit 1
+fi
+
+sed -e "s|@ZUCSV_LIB@|${ZUCSV_LIB}|g" -e "s|@ZUARROW_LIB@|${ZUARROW_LIB}|g" \
+  -e "s|@PTHREAD@|-pthread|g" src/Makevars.in > src/Makevars
+
+echo "configure: linking ${ZUCSV_LIB}/libzucsv.a and ${ZUARROW_LIB}/libzuarrow.a"

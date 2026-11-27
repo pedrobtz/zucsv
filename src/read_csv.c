@@ -1,368 +1,49 @@
-/* read_csv(): the R-facing entry point (design SS4-SS16).
+/* read_csv() and sniff_csv(): the R-facing entry points (design SS4-SS16).
  *
- * Two passes over the file. Pass 1 validates everything and counts rows;
- * pass 2 allocates each column at its exact final length and fills it, so
- * it cannot fail on the content of the file (design SS9).
+ * Both are clients of the R-free core (core.c, #23): pass 1 validates
+ * everything and counts rows there, and pass 2 walks the same rows with
+ * the core's cursor while this file writes each cell into an R vector
+ * allocated at its exact final length, so it cannot fail on the content of
+ * the file (design SS9). The Arrow stream is the core's other client, so
+ * the two cannot read a file differently.
  *
- * The whole parse runs inside R_UnwindProtect, so the FILE * and the parser
- * are released however the call ends -- ordinary return, Rf_error(), or a
- * user interrupt. Every other allocation here is R_alloc'd and freed by R
- * on the same paths (design SS16). */
+ * The whole read runs inside R_UnwindProtect, and every resource it holds
+ * -- the FILE *, the parser, the core's arrays -- hangs off one zucsv_core,
+ * so the cleanup releases it however the call ends: ordinary return,
+ * Rf_error(), or a user interrupt raised from the core's progress hook
+ * (design SS16). Scratch on this side is R_alloc'd and freed by R. */
 
-#include "zucsv.h"
+#include "rzucsv.h"
 
 #include <string.h>
 
-/* ------------------------------------------------------------------ *
- * Parser plumbing
- * ------------------------------------------------------------------ */
-
-/* Installed as opts.errprintf so no vendored code can write to the R
-   session's stderr, whatever the input. Nothing is printed. The one message
-   that matters is kept as a flag: "Warning: row %zu truncated" is zsv's only
-   report that a record overflowed its buffer. It then hands over the cells
-   that fit as a record, and parses the rest of the line as further records,
-   so without the flag an oversize record becomes a short row or vanishes
-   (#28). Only zsv.c emits that message; the format is matched exactly. */
-static int zucsv_diagnostics(void *ctx, const char *fmt, ...) {
-  if (!ctx || !fmt)
-    return 0;
-  if (strcmp(fmt, "Warning: row %zu truncated\n") == 0)
-    ((zucsv_reader *)ctx)->truncated = 1;
-  else if (strcmp(fmt, "Warning: unclosed quote at end of input\n") == 0)
-    ((zucsv_reader *)ctx)->unclosed = 1; /* tools/patches/0003, #30 */
-  return 0;
+/* The core's progress hook: read_csv() stays interruptible, every 16k
+   records or 64 MiB (#31). R_CheckUserInterrupt() long-jumps out of the
+   core's frames, which hold nothing the cleanup below does not release. */
+static void zucsv_r_progress(void *ctx) {
+  (void)ctx;
+  R_CheckUserInterrupt();
 }
 
-/* A short read must not be mistaken for end of input. fopen() succeeds on a
-   directory on most Unixes, and any I/O error mid-file would otherwise
-   silently truncate the table. */
-static void zucsv_check_io(zucsv_reader *r, const char *path) {
-  if (r->stream && ferror(r->stream))
-    Rf_error("Cannot read CSV file: %s", path);
-}
-
-/* The row loop stops on any status that is not zsv_status_row, and only one
-   of those means the file ended: zsv_next_row() turns zsv_status_no_more_input
-   into zsv_status_done before returning it (vendored zsv.c), so `done` is the
-   only clean end a caller can see. A failed allocation inside the parser or an
-   internal error looks identical to the loop, and neither sets ferror() on the
-   stream, so without this a table would be silently truncated -- or a good file
-   returned as 0x0 -- which is exactly what design SS16 forbids. */
-static void zucsv_check_parse(enum zsv_status status, const char *path) {
-  if (status == zsv_status_done)
-    return;
-  if (status == zsv_status_memory) {
-    if (path)
-      Rf_error("Ran out of memory while parsing CSV file: %s", path);
-    Rf_error("Ran out of memory while parsing CSV text");
-  }
-  if (path)
-    Rf_error("CSV parser failed while reading file: %s", path);
-  Rf_error("CSV parser failed while reading text");
-}
-
-/* Pass 2 disagreeing with pass 1 means the file moved under us. Text cannot
-   move -- the bytes are R's, and they are protected for the whole call -- so
-   this is unreachable for text input and says so rather than naming a file
-   that does not exist. */
-static void zucsv_error_drift(const char *path) {
-  if (path)
-    Rf_error("CSV file changed while it was being read: %s", path);
-  Rf_error("Internal error: CSV text parsed differently on the second pass");
-}
-
-static void zucsv_reader_close(zucsv_reader *r) {
-  if (r->parser) {
-    zsv_finish(r->parser);
-    zsv_delete(r->parser);
-    r->parser = NULL;
-  }
-  if (r->stream) {
-    fclose(r->stream);
-    r->stream = NULL;
-  }
-}
-
-static void zucsv_cleanup(void *data, Rboolean jump) {
-  (void)jump;
-  zucsv_reader_close((zucsv_reader *)data);
-}
-
-/* opts.read for text input. zsv calls it exactly as it would fread(), so the
-   fread() convention is what it has to honour: n is the element size, size
-   the count, and the return value is elements delivered, not bytes. */
-static size_t zucsv_read_text(void *restrict buff, size_t n, size_t size, void *restrict ctx) {
-  zucsv_reader *r = (zucsv_reader *)ctx;
-  size_t want = n * size;
-  size_t left = r->len - r->pos;
-  size_t take = want < left ? want : left;
-  if (take) {
-    memcpy(buff, r->data + r->pos, take);
-    r->pos += take;
-  }
-  return n ? take / n : 0;
-}
-
-/* One source per call: r->data set means text, otherwise path. Both passes
-   call this, so for a file it is a fresh fopen and for text a rewind. */
-static void zucsv_open(zucsv_reader *r, const char *path, char delimiter) {
-  zucsv_reader_close(r);
-
-  if (!path) {
-    r->pos = 0;
-  } else {
-    r->stream = fopen(path, "rb");
-    if (!r->stream)
-      Rf_error("Cannot open CSV file: %s", path);
-  }
-
-  struct zsv_opts opts;
-  memset(&opts, 0, sizeof(opts));
-  if (path) {
-    opts.stream = r->stream;
-  } else {
-    opts.read = zucsv_read_text;
-    opts.stream = r;
-  }
-  opts.errprintf = zucsv_diagnostics;
-  opts.errf = r;
-  r->truncated = 0;
-  r->unclosed = 0;
-  opts.delimiter = delimiter;
-  /* One more than the cap: zsv truncates silently at max_columns, so the
-     spare slot is what lets a file over the cap be told from one at it
-     (design SS15, decision 12). */
-  opts.max_columns = ZUCSV_MAX_COLS + 1;
-  /* zsv sizes its scan buffer at 2 * max_row_size, and that buffer is the
-     real limit on a record, so halve ours to land on ZUCSV_MAX_ROW_SIZE. */
-  opts.max_row_size = ZUCSV_MAX_ROW_SIZE / 2;
-  /* zsv's default is to drop every leading record whose cells are all
-     zero-length, using a blankness test that ignores quoting -- so a real
-     first record of empty names, or a leading `""`, would never reach us and
-     SS10's policy would be applied to the wrong record. zucsv decides what a
-     blank record is (zucsv_is_blank_record(), decision 11); the parser must
-     hand over all of them. */
-  opts.keep_empty_header_rows = 1;
-
-  r->parser = zsv_new(&opts);
-  if (!r->parser)
-    Rf_error("Cannot create CSV parser");
-}
-
-/* ------------------------------------------------------------------ *
- * Records
- * ------------------------------------------------------------------ */
-
-/* A blank record is one unquoted zero-length cell: a line with nothing
-   between its terminators. `""` alone on a line is quoted, so it is a real
-   one-cell record and is kept (design SS10, decision 11). */
-static int zucsv_is_blank_record(zsv_parser parser, size_t ncell) {
-  if (ncell != 1)
-    return 0;
-  struct zsv_cell c = zsv_get_cell(parser, 0);
-  return c.len == 0 && !(c.quoted & ZSV_PARSER_QUOTE_CLOSED);
-}
-
-/* Column label for an error message: the header name, or V<n>. */
-static const char *zucsv_col_label(SEXP names, R_xlen_t j, char *buf, size_t bufsize) {
-  if (names != R_NilValue && j < XLENGTH(names))
-    return Rf_translateChar(STRING_ELT(names, j));
-  snprintf(buf, bufsize, "V%lld", (long long)(j + 1));
-  return buf;
-}
-
-/* Rejects the two things that cannot be carried into an R string. Used for
-   header names and for data cells alike (design SS13). */
-static void zucsv_check_text(const struct zsv_cell *c, double record, R_xlen_t j, SEXP names) {
-  char buf[64];
-  const char *what = NULL;
-
-  switch (zucsv_check_bytes(c->str, c->len)) {
-  case ZUCSV_TEXT_NUL:
-    what = "an embedded NUL";
-    break;
-  case ZUCSV_TEXT_BAD_UTF8:
-    what = "invalid UTF-8";
-    break;
-  default:
-    return;
-  }
-
-  /* A header record has no column names yet, so there is nothing to name. */
-  if (names == R_NilValue)
-    Rf_error("CSV contains %s at row %.0f, column %d", what, record, (int)(j + 1));
-  Rf_error("CSV contains %s at row %.0f, column %d (\"%s\")", what, record, (int)(j + 1),
-           zucsv_col_label(names, j, buf, sizeof(buf)));
-}
-
-/* Maps a col_types name to the enum. The R wrapper has already rejected
-   anything not in this set. */
-static zucsv_type zucsv_type_from_name(const char *name) {
-  if (strcmp(name, "logical") == 0)
-    return ZUCSV_LOGICAL;
-  if (strcmp(name, "integer") == 0)
-    return ZUCSV_INTEGER;
-  if (strcmp(name, "double") == 0)
-    return ZUCSV_DOUBLE;
-  return ZUCSV_CHARACTER;
-}
-
-static const char *zucsv_type_name(zucsv_type t) {
-  switch (t) {
-  case ZUCSV_LOGICAL:
-    return "logical";
-  case ZUCSV_INTEGER:
-    return "integer";
-  case ZUCSV_DOUBLE:
-    return "double";
-  default:
-    return "character";
-  }
-}
-
-/* Formats a cell for an error message: truncated, with anything that would
-   break up the message flattened to a space. */
-static void zucsv_show_cell(char *buf, size_t bufsize, const unsigned char *str, size_t len) {
-  size_t n = len < ZUCSV_MSG_MAX ? len : ZUCSV_MSG_MAX;
-  size_t j = 0;
-  for (size_t i = 0; i < n && j + 4 < bufsize; i++) {
-    unsigned char c = str[i];
-    buf[j++] = (c == '\0' || c == '\n' || c == '\r' || c == '\t') ? ' ' : (char)c;
-  }
-  if (len > n && j + 4 < bufsize) {
-    buf[j++] = '.';
-    buf[j++] = '.';
-    buf[j++] = '.';
-  }
-  buf[j] = '\0';
-}
-
-/* A cell that must satisfy a forced type but does not is an error, never a
-   warning followed by NA (design SS12). */
-static void zucsv_check_forced(zucsv_type type, const struct zsv_cell *c, double record,
-                               R_xlen_t j, SEXP names) {
-  int ok;
-  switch (type) {
-  case ZUCSV_LOGICAL:
-    ok = zucsv_is_logical(c->str, c->len);
-    break;
-  case ZUCSV_INTEGER:
-    ok = zucsv_is_integer(c->str, c->len, NULL);
-    break;
-  case ZUCSV_DOUBLE:
-    ok = zucsv_is_double(c->str, c->len);
-    break;
-  default:
-    return; /* character accepts any cell that got this far */
-  }
-  if (ok)
-    return;
-
-  char label[64], shown[ZUCSV_MSG_MAX + 8];
-  zucsv_show_cell(shown, sizeof(shown), c->str, c->len);
-  Rf_error("Cannot parse row %.0f, column %d (\"%s\") as %s: \"%s\"", record, (int)(j + 1),
-           zucsv_col_label(names, j, label, sizeof(label)), zucsv_type_name(type), shown);
-}
-
-/* A record zsv truncated is an error at that record, checked before any of
-   its cells is looked at: the cells it handed over are a prefix of the
-   record, and the records after it are the rest of the same line (#28). */
-static void zucsv_check_truncated(const zucsv_reader *r, double record) {
-  if (r->truncated)
-    Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
-             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
-}
-
-/* The input ended inside a quoted cell. zsv reports it while returning the
-   last record, whose last cell is the one the quote opened (#30). Checked
-   before the record's width, so the error names the real cause. */
-static void zucsv_check_unclosed(const zucsv_reader *r, double record, size_t n,
-                                 SEXP names) {
-  if (!r->unclosed)
-    return;
-  /* Called with n = 0 only after the loop, as a backstop: the flag arrives
-     with the record that holds the open cell, so this is not expected. */
-  if (n == 0)
-    Rf_error("CSV row %.0f opens a quote that is never closed", record);
-  R_xlen_t j = (R_xlen_t)n - 1;
-  /* A real name only: the header record has none yet, and a cell past the
-     header's width has none, so neither gets an invented V<n> (as
-     zucsv_check_text does). */
-  if (names == R_NilValue || j >= XLENGTH(names))
-    Rf_error("CSV row %.0f, column %d opens a quote that is never closed", record,
-             (int)(j + 1));
-  Rf_error("CSV row %.0f, column %d (\"%s\") opens a quote that is never closed", record,
-           (int)(j + 1), Rf_translateChar(STRING_ELT(names, j)));
-}
-
-/* Interrupt checks by records and by bytes (ZUCSV_INTERRUPT_BYTES, #31).
-   zsv_cum_scanned_length() is a few loads, so calling it per record is
-   cheap. Checked with the budget lowered to 4 MiB on a 19.6 MB file of
-   64 KiB rows: it fired at 4.2, 8.4, 12.6 and 16.8 MB, where the record
-   count alone (300 rows) never would. */
-static void zucsv_maybe_interrupt(zsv_parser parser, double record, size_t *next_check) {
-  size_t scanned = zsv_cum_scanned_length(parser);
-  if ((R_xlen_t)record % ZUCSV_INTERRUPT_INTERVAL == 0 || scanned >= *next_check) {
-    *next_check = scanned + ZUCSV_INTERRUPT_BYTES;
-    R_CheckUserInterrupt();
-  }
-}
-
-/* Shape errors that apply to any record, checked before its width is known
-   to be right. `record` is 1-based as the parser emits records, header
-   included (design SS10). */
-static void zucsv_check_shape(size_t n, double record) {
-  /* A zero-cell record was zsv's only sign of an oversize row until #28;
-     zucsv_check_truncated() now reports every oversize row first, so this
-     stays as a backstop, not as the detector. */
-  if (n == 0)
-    Rf_error("CSV row %.0f exceeds zucsv's maximum record size of %u bytes", record,
-             (unsigned)(ZUCSV_MAX_ROW_SIZE - 1u));
-  if (n > (size_t)ZUCSV_MAX_COLS)
-    Rf_error("CSV exceeds zucsv's maximum of %d columns", ZUCSV_MAX_COLS);
-}
-
-/* ------------------------------------------------------------------ *
- * The parse
- * ------------------------------------------------------------------ */
-
-/* `header = NA`: is the first record names or data? It is a header unless one
-   of its *unquoted* fields is numeric or logical syntax -- one such field is
-   enough, since a name that parses as a number is far rarer than a data row
-   that does. Nothing outside this record is consulted: not the rest of the
-   file, not `col_types`, not `na` (design SS4, SS29 decision 20). That is what
-   lets the verdict be reached here, while the record is still the parser's
-   current one, instead of at the end of pass 1. */
-static int zucsv_detect_header(zsv_parser parser, R_xlen_t ncol) {
-  for (R_xlen_t j = 0; j < ncol; j++) {
-    struct zsv_cell c = zsv_get_cell(parser, (size_t)j);
-    /* A quoted field is the writer saying "this is text", which is the same
-       thing a column name says -- so it is skipped before either grammar:
-       `"2024"` and `"TRUE"` are names where bare 2024 and TRUE are data
-       (SS29 decision 21). */
-    if (c.quoted & ZSV_PARSER_QUOTE_CLOSED)
-      continue;
-    /* Integer syntax is a subset of double syntax (SS29 decision 18), so the
-       double grammar alone covers both. */
-    if (zucsv_is_logical(c.str, c.len) || zucsv_is_double(c.str, c.len))
-      return 0;
-  }
-  return 1;
+/* The core's message as an R error. Column names in it are UTF-8, as the
+   header held them, so it is translated to the native encoding as the
+   names were before the core existed. */
+static void zucsv_r_fail(const zucsv_core *c) {
+  Rf_error("%s", Rf_translateChar(Rf_mkCharCE(c->message, CE_UTF8)));
 }
 
 typedef struct {
-  zucsv_reader reader; /* first member: also the cleanup handle */
-  const char *path;
-  int want_header;
-  char delim;
+  zucsv_core core; /* first member: also the cleanup handle */
   /* Stop after pass 1 and return what it learned, instead of materialising
      columns. Sharing the pass is the point: a sniffer that ran its own
      inference could disagree with the reader it is meant to describe. */
   int sniff;
-  zucsv_na na;
-  SEXP col_types;
 } zucsv_ctx;
+
+static void zucsv_cleanup(void *data, Rboolean jump) {
+  (void)jump;
+  zucsv_core_close((zucsv_core *)data);
+}
 
 /* The sniff result: a plain list, so it composes straight into read_csv()
    and adds no S3 surface (design SS5). */
@@ -394,135 +75,19 @@ static SEXP zucsv_sniff_result(int header_row, R_xlen_t ncol, double nrow, SEXP 
 
 static SEXP zucsv_read_body(void *data) {
   zucsv_ctx *ctx = (zucsv_ctx *)data;
-  R_xlen_t ncol = 0;
-  double nrow = 0;
+  zucsv_core *c = &ctx->core;
   int nprotect = 0;
-  zucsv_type *types = NULL;
-  zucsv_infer *infer = NULL;
-  /* ctx->want_header is what the caller asked for and may be NA (detect);
-     header_row is the verdict, settled once below when the first record is
-     read and never NA. Both passes read it, so pass 2 needs no re-check. */
-  int header_row = 0;
 
   /* Every PROTECT below bumps nprotect and each return unwinds exactly that
      many, so the count never has to be kept in step by hand. The body of an
      R_UnwindProtect must leave the stack balanced. */
 
   /* ================= pass 1: inspect and validate ================= */
-  SEXP names = R_NilValue;
-  zucsv_open(&ctx->reader, ctx->path, ctx->delim);
+  if (zucsv_core_pass1(c))
+    zucsv_r_fail(c);
 
-  {
-    double record = 0;
-    size_t next_check = ZUCSV_INTERRUPT_BYTES;
-    int have_shape = 0;
-    enum zsv_status status;
-
-    while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
-      record += 1;
-      zucsv_check_truncated(&ctx->reader, record);
-      size_t n = zsv_cell_count(ctx->reader.parser);
-      zucsv_check_unclosed(&ctx->reader, record, n, names);
-      /* At the top, so blank records and the header count too. */
-      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
-
-      if (zucsv_is_blank_record(ctx->reader.parser, n))
-        continue; /* blank records are skipped everywhere (design SS10) */
-
-      if (!have_shape) {
-        zucsv_check_shape(n, record);
-        ncol = (R_xlen_t)n;
-        have_shape = 1;
-
-        names = PROTECT(Rf_allocVector(STRSXP, ncol));
-        nprotect++;
-
-        /* Per-column state, sized now that ncol is known. R_alloc'd, so it
-           is released with everything else if this call unwinds. */
-        types = (zucsv_type *)R_alloc((size_t)ncol, sizeof(zucsv_type));
-        if (ctx->col_types == R_NilValue) {
-          infer = (zucsv_infer *)R_alloc((size_t)ncol, sizeof(zucsv_infer));
-          for (R_xlen_t j = 0; j < ncol; j++)
-            zucsv_infer_init(&infer[j]);
-        } else {
-          R_xlen_t nt = XLENGTH(ctx->col_types);
-          if (nt != 1 && nt != ncol)
-            Rf_error("col_types has length %d but the CSV has %d columns", (int)nt, (int)ncol);
-          for (R_xlen_t j = 0; j < ncol; j++)
-            types[j] = zucsv_type_from_name(
-              Rf_translateChar(STRING_ELT(ctx->col_types, nt == 1 ? 0 : j)));
-        }
-
-        header_row = (ctx->want_header == NA_LOGICAL)
-                       ? zucsv_detect_header(ctx->reader.parser, ncol)
-                       : ctx->want_header;
-
-        if (header_row) {
-          /* Header values are text: never na-matched, never type-inferred
-             (design SS4), but still checked for NUL and UTF-8. */
-          for (R_xlen_t j = 0; j < ncol; j++) {
-            struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
-            zucsv_check_text(&c, record, j, R_NilValue);
-            SET_STRING_ELT(names, j, Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8));
-          }
-          continue; /* the header is not a data row */
-        }
-
-        char buf[32];
-        for (R_xlen_t j = 0; j < ncol; j++) {
-          snprintf(buf, sizeof(buf), "V%lld", (long long)(j + 1));
-          SET_STRING_ELT(names, j, Rf_mkCharCE(buf, CE_UTF8));
-        }
-        /* This record is data. It set ncol just above, and was shape-checked
-           there, so the width check below would be trivially true for it. */
-      } else {
-        zucsv_check_shape(n, record);
-        if ((R_xlen_t)n != ncol)
-          Rf_error("CSV row %.0f has %d %s; expected %d", record, (int)n,
-                   n == 1 ? "field" : "fields", (int)ncol);
-      }
-
-      for (R_xlen_t j = 0; j < ncol; j++) {
-        struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
-
-        /* A missing cell is evidence for nothing and is exempt from a
-           forced type: it becomes that type's NA (design SS11, SS12). It
-           also needs no byte check, being identical to an `na` string,
-           which R already gave us as valid text. */
-        if (zucsv_is_na(&ctx->na, c.str, c.len))
-          continue;
-
-        /* Every grammar accepts only ASCII, so a cell one of them takes
-           cannot hold a NUL or a bad UTF-8 sequence and needs no walk over
-           its bytes. Numeric and logical columns therefore pay nothing for
-           the text checks; character columns pay exactly what they did
-           before (design SS13). */
-        if (ctx->col_types == R_NilValue) {
-          if (!zucsv_infer_update(&infer[j], c.str, c.len))
-            zucsv_check_text(&c, record, j, names);
-        } else if (!zucsv_accepts(types[j], c.str, c.len)) {
-          /* Report a NUL or bad UTF-8 in preference to a conversion
-             failure: it says more about what is wrong with the file. */
-          zucsv_check_text(&c, record, j, names);
-          zucsv_check_forced(types[j], &c, record, j, names);
-        }
-      }
-
-      if (nrow >= (double)ZUCSV_MAX_ROWS)
-        Rf_error("CSV has more than %d rows, which is more than a data frame can hold",
-                 ZUCSV_MAX_ROWS);
-      nrow += 1;
-    }
-
-    /* A truncation reported with no record after it: the last record of
-       the input overflowed. */
-    zucsv_check_truncated(&ctx->reader, record + 1);
-    zucsv_check_unclosed(&ctx->reader, record, 0, R_NilValue);
-    zucsv_check_parse(status, ctx->path);
-  }
-
-  zucsv_check_io(&ctx->reader, ctx->path);
-  zucsv_reader_close(&ctx->reader);
+  R_xlen_t ncol = (R_xlen_t)c->ncol;
+  double nrow = c->nrow;
 
   /* An empty file, or one of nothing but blank records, is a zero-column,
      zero-row data frame (design SS14). */
@@ -545,14 +110,15 @@ static SEXP zucsv_read_body(void *data) {
     return out;
   }
 
-  /* Inference is complete: fix each column's type before allocating. */
-  if (ctx->col_types == R_NilValue) {
-    for (R_xlen_t j = 0; j < ncol; j++)
-      types[j] = zucsv_infer_result(&infer[j]);
-  }
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, ncol));
+  nprotect++;
+  for (R_xlen_t j = 0; j < ncol; j++)
+    SET_STRING_ELT(names, j, Rf_mkCharLenCE(c->names[j], (int)c->name_len[j], CE_UTF8));
+
+  const zucsv_type *types = c->types;
 
   if (ctx->sniff) {
-    SEXP out = PROTECT(zucsv_sniff_result(header_row, ncol, nrow, names, types));
+    SEXP out = PROTECT(zucsv_sniff_result(c->header_row, ncol, nrow, names, types));
     nprotect++;
     UNPROTECT(nprotect);
     return out;
@@ -624,96 +190,61 @@ static SEXP zucsv_read_body(void *data) {
     }
   }
 
-  zucsv_open(&ctx->reader, ctx->path, ctx->delim);
+  if (zucsv_core_rewind(c))
+    zucsv_r_fail(c);
 
-  {
-    double record = 0, row = 0;
-    size_t next_check = ZUCSV_INTERRUPT_BYTES;
-    int header_pending = header_row;
-    enum zsv_status status;
+  int more;
+  while ((more = zucsv_core_next_row(c)) == 1) {
+    R_xlen_t at = (R_xlen_t)c->at;
+    for (R_xlen_t j = 0; j < ncol; j++) {
+      struct zsv_cell cell = zsv_get_cell(c->parser, (size_t)j);
+      int missing = zucsv_is_na(&c->na, cell.str, cell.len);
 
-    while ((status = zsv_next_row(ctx->reader.parser)) == zsv_status_row) {
-      record += 1;
-      zucsv_check_truncated(&ctx->reader, record);
-      size_t n = zsv_cell_count(ctx->reader.parser);
-      zucsv_check_unclosed(&ctx->reader, record, n, R_NilValue);
-      /* At the top, so blank records and the header count too. */
-      zucsv_maybe_interrupt(ctx->reader.parser, record, &next_check);
-
-      if (zucsv_is_blank_record(ctx->reader.parser, n))
-        continue;
-
-      if (header_pending) {
-        header_pending = 0;
-        continue;
+      /* Pass 1 checked every cell against this column's type, so nothing
+         here can fail on content (design SS9). */
+      switch (types[j]) {
+      case ZUCSV_LOGICAL:
+        ((int *)colptr[j])[at] = missing ? NA_LOGICAL : zucsv_as_logical(cell.str, cell.len);
+        break;
+      case ZUCSV_INTEGER: {
+        int value = NA_INTEGER;
+        if (!missing)
+          zucsv_is_integer(cell.str, cell.len, &value);
+        ((int *)colptr[j])[at] = value;
+        break;
       }
-
-      /* Pass 1 validated the content, so the only thing that can be wrong
-         here is that the file changed underneath us. Checking is what keeps
-         the writes below in bounds (design SS9). */
-      if ((R_xlen_t)n != ncol || row >= nrow)
-        zucsv_error_drift(ctx->path);
-
-      for (R_xlen_t j = 0; j < ncol; j++) {
-        struct zsv_cell c = zsv_get_cell(ctx->reader.parser, (size_t)j);
-        R_xlen_t at = (R_xlen_t)row;
-        int missing = zucsv_is_na(&ctx->na, c.str, c.len);
-
-        /* Pass 1 checked every cell against this column's type, so nothing
-           here can fail on content (design SS9). */
-        switch (types[j]) {
-        case ZUCSV_LOGICAL:
-          ((int *)colptr[j])[at] = missing ? NA_LOGICAL : zucsv_as_logical(c.str, c.len);
-          break;
-        case ZUCSV_INTEGER: {
-          int value = NA_INTEGER;
-          if (!missing)
-            zucsv_is_integer(c.str, c.len, &value);
-          ((int *)colptr[j])[at] = value;
-          break;
+      case ZUCSV_DOUBLE:
+        ((double *)colptr[j])[at] = missing ? NA_REAL : zucsv_core_as_double(c, cell.str, cell.len);
+        break;
+      default: {
+        SEXP col = VECTOR_ELT(out, j);
+        if (missing) {
+          SET_STRING_ELT(col, at, NA_STRING);
+          break; /* NA_STRING is never a reuse candidate: CHAR() of it is
+                    "NA", which would match a literal NA cell under
+                    na = NULL */
         }
-        case ZUCSV_DOUBLE:
-          ((double *)colptr[j])[at] = missing ? NA_REAL : zucsv_as_double(c.str, c.len);
-          break;
-        default: {
-          SEXP col = VECTOR_ELT(out, j);
-          if (missing) {
-            SET_STRING_ELT(col, at, NA_STRING);
-            break; /* NA_STRING is never a reuse candidate: CHAR() of it is
-                      "NA", which would match a literal NA cell under
-                      na = NULL */
-          }
-          SEXP s = prev[j];
-          if (s != NULL && (size_t)LENGTH(s) == c.len &&
-              memcmp(CHAR(s), c.str, c.len) == 0) {
-            SET_STRING_ELT(col, at, s);
-          } else {
-            s = Rf_mkCharLenCE((const char *)c.str, (int)c.len, CE_UTF8);
-            SET_STRING_ELT(col, at, s);
-            prev[j] = s;
-          }
-          break;
+        SEXP s = prev[j];
+        if (s != NULL && (size_t)LENGTH(s) == cell.len &&
+            memcmp(CHAR(s), cell.str, cell.len) == 0) {
+          SET_STRING_ELT(col, at, s);
+        } else {
+          s = Rf_mkCharLenCE((const char *)cell.str, (int)cell.len, CE_UTF8);
+          SET_STRING_ELT(col, at, s);
+          prev[j] = s;
         }
-        }
+        break;
       }
-      row += 1;
+      }
     }
-
-    /* A truncation reported with no record after it: the last record of
-       the input overflowed. */
-    zucsv_check_truncated(&ctx->reader, record + 1);
-    zucsv_check_unclosed(&ctx->reader, record, 0, R_NilValue);
-    zucsv_check_parse(status, ctx->path);
-    /* Before concluding the file changed: a read error partway through ends
-       the loop with a short table too, and "cannot read" is the truer
-       message. Pass 1 checks in this order for the same reason. */
-    zucsv_check_io(&ctx->reader, ctx->path);
-
-    if (row != nrow)
-      zucsv_error_drift(ctx->path);
+    /* Only the R_strtod fallback can fail here, on an allocation. */
+    if (ZUCSV_UNLIKELY(c->code))
+      zucsv_r_fail(c);
   }
+  if (more < 0)
+    zucsv_r_fail(c);
 
-  zucsv_reader_close(&ctx->reader);
+  zucsv_core_close(c);
 
   /* --- the data frame, built directly (design SS5) --- */
   Rf_setAttrib(out, R_NamesSymbol, names);
@@ -733,6 +264,18 @@ static SEXP zucsv_read_body(void *data) {
 
   UNPROTECT(nprotect);
   return out;
+}
+
+/* Maps a col_types name to the enum. The R wrapper has already rejected
+   anything not in this set. */
+static zucsv_type zucsv_type_from_name(const char *name) {
+  if (strcmp(name, "logical") == 0)
+    return ZUCSV_LOGICAL;
+  if (strcmp(name, "integer") == 0)
+    return ZUCSV_INTEGER;
+  if (strcmp(name, "double") == 0)
+    return ZUCSV_DOUBLE;
+  return ZUCSV_CHARACTER;
 }
 
 /* The shared entry: both exported routines validate the same way and run the
@@ -765,42 +308,51 @@ static SEXP zucsv_run(SEXP file, SEXP text, int want_header, SEXP delimiter, SEX
     Rf_error("'delimiter' may not be a newline, carriage return, form feed or quote");
 
   zucsv_ctx ctx;
-  ctx.reader.stream = NULL;
-  ctx.reader.parser = NULL;
-  ctx.reader.data = NULL;
-  ctx.reader.len = 0;
-  ctx.reader.pos = 0;
+  zucsv_core_init(&ctx.core);
+  zucsv_core *c = &ctx.core;
   if (file != R_NilValue) {
-    ctx.path = Rf_translateChar(STRING_ELT(file, 0));
+    c->path = Rf_translateChar(STRING_ELT(file, 0));
   } else {
     /* Translated once, to UTF-8, so the parser sees the same bytes a file
        would have held -- and so a latin1- or native-encoded string is
        converted rather than rejected. The result lives on R's vmax stack
        until .Call returns, which outlives both passes. */
-    ctx.path = NULL;
-    ctx.reader.data = Rf_translateCharUTF8(STRING_ELT(text, 0));
-    ctx.reader.len = strlen(ctx.reader.data);
+    c->data = Rf_translateCharUTF8(STRING_ELT(text, 0));
+    c->len = strlen(c->data);
   }
-  ctx.want_header = want_header;
-  ctx.delim = delim;
+  c->want_header = want_header == NA_LOGICAL ? ZUCSV_HEADER_DETECT
+                   : want_header            ? ZUCSV_HEADER_YES
+                                            : ZUCSV_HEADER_NO;
+  c->delim = delim;
+  c->strtod_mode = zucsv_r_strtod_mode;
+  c->strtod = R_strtod; /* used only in ZUCSV_STRTOD_CALL */
+  c->progress = zucsv_r_progress;
   ctx.sniff = sniff;
-  ctx.col_types = col_types;
+
+  if (col_types != R_NilValue) {
+    R_xlen_t nt = XLENGTH(col_types);
+    zucsv_type *forced = (zucsv_type *)R_alloc((size_t)(nt ? nt : 1), sizeof(zucsv_type));
+    for (R_xlen_t i = 0; i < nt; i++)
+      forced[i] = zucsv_type_from_name(Rf_translateChar(STRING_ELT(col_types, i)));
+    c->forced = forced;
+    c->n_forced = (ptrdiff_t)nt;
+  }
 
   /* The na table, translated to UTF-8 once so matching is a bytewise
      comparison against the parser's cells (design SS4). */
-  ctx.na.n = (na == R_NilValue) ? 0 : XLENGTH(na);
-  ctx.na.str = ctx.na.n ? (const char **)R_alloc((size_t)ctx.na.n, sizeof(char *)) : NULL;
-  ctx.na.len = ctx.na.n ? (size_t *)R_alloc((size_t)ctx.na.n, sizeof(size_t)) : NULL;
-  for (R_xlen_t i = 0; i < ctx.na.n; i++) {
+  c->na.n = (na == R_NilValue) ? 0 : (ptrdiff_t)XLENGTH(na);
+  c->na.str = c->na.n ? (const char **)R_alloc((size_t)c->na.n, sizeof(char *)) : NULL;
+  c->na.len = c->na.n ? (size_t *)R_alloc((size_t)c->na.n, sizeof(size_t)) : NULL;
+  for (ptrdiff_t i = 0; i < c->na.n; i++) {
     SEXP e = STRING_ELT(na, i);
     if (e == NA_STRING)
       Rf_error("'na' may not contain NA");
-    ctx.na.str[i] = Rf_translateCharUTF8(e);
-    ctx.na.len[i] = strlen(ctx.na.str[i]);
+    c->na.str[i] = Rf_translateCharUTF8(e);
+    c->na.len[i] = strlen(c->na.str[i]);
   }
 
   SEXP cont = PROTECT(R_MakeUnwindCont());
-  SEXP out = R_UnwindProtect(zucsv_read_body, &ctx, zucsv_cleanup, &ctx.reader, cont);
+  SEXP out = R_UnwindProtect(zucsv_read_body, &ctx, zucsv_cleanup, &ctx.core, cont);
   UNPROTECT(1);
   return out;
 }

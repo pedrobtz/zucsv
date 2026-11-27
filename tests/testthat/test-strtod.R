@@ -45,3 +45,12 @@ test_that("the mode hook rejects anything but a mode", {
   expect_error(.Call(zucsv:::C_strtod_mode, 5L), "from 0 to 4", fixed = TRUE)
   expect_error(.Call(zucsv:::C_strtod_mode, "1"), "from 0 to 4", fixed = TRUE)
 })
+
+test_that("the probe picks the fast long double instance where it is exact", {
+  # Where long double really has a 64-bit or wider mantissa, the fast
+  # instance's constant power table must equal R's own loop (#23); a table
+  # that did not would make the probe fall back to the verbatim instance.
+  skip_if(is.null(.Machine$longdouble.digits) || .Machine$longdouble.digits < 64,
+          "long double is not wider than double here")
+  expect_identical(.Call(zucsv:::C_strtod_mode, NULL), 1L)
+})

@@ -30,8 +30,13 @@ URL: https://github.com/pedrobtz/zucsv
 BugReports: https://github.com/pedrobtz/zucsv/issues
 Roxygen: list(markdown = TRUE)
 Suggests: 
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    zuarrow
+LinkingTo: 
+    zuarrow
 Config/testthat/edition: 3
 Config/Needs/website: rmarkdown, data.table, vroom
 Config/roxygen2/version: 8.1.1
 Language: en-US
+Remotes: 
+    pedrobtz/zuarrow@6e820a679629913656a618aea8193cc4e64f2258

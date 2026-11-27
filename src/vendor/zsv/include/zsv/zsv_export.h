@@ -2,7 +2,10 @@
 #define ZSV_EXPORT_H
 
 // clang-format off
-#ifdef __EMSCRIPTEN__
+/* zucsv: a definition from the build wins, so -DZSV_EXPORT= leaves zsv's
+ * functions to the build's visibility (-fvisibility=hidden). */
+#ifdef ZSV_EXPORT
+#elif defined(__EMSCRIPTEN__)
 # include <emscripten.h>
 # define ZSV_EXPORT EMSCRIPTEN_KEEPALIVE
 #else

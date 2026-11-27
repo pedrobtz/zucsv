@@ -1,5 +1,23 @@
 # zucsv (development version)
 
+## For package developers
+
+* zucsv now has a C API for other packages (#23). A package with
+  `LinkingTo: zucsv, zuarrow` links `libzucsv.a`, which zucsv installs in
+  `lib/`, and reads a CSV file as an Arrow C stream with
+  `zucsv_open_stream()`, declared in `zucsv.h`. The stream holds the
+  values `read_csv()` returns for the same file and options, doubles bit
+  for bit, and an error has the message `read_csv()` gives. It calls no R,
+  so it can be read on any thread. `zucsv-r.h` has the one call that needs
+  R, `zucsv_strtod_probe()`, made once at load.
+
+* zucsv now needs zuarrow at build time (`LinkingTo`), for the Arrow
+  arrays. It is still not needed at run time.
+
+* `read_csv()` and `sniff_csv()` return what they returned before. In a
+  locale that is not UTF-8, a non-ASCII byte of a cell or path shown in an
+  error message is now escaped as R escapes it.
+
 # zucsv 0.1.1
 
 ## Bug fixes

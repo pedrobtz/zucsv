@@ -114,6 +114,13 @@ jobs:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
     with:
       fail-on-findings: true
+      # LinkingTo: zuarrow (#23), which is not on CRAN, so the image cannot
+      # install it; zukomp, which zuarrow links, goes first. The commit is
+      # DESCRIPTION's Remotes; keep the two equal, and drop the entries
+      # once zuarrow's C API is on CRAN.
+      github-packages: |
+        pedrobtz/zukomp@0.2.0
+        pedrobtz/zuarrow@6e820a679629913656a618aea8193cc4e64f2258
 
   # CRAN's rcnst, rlibro and vnu checks -- the "Additional issues" nothing
   # above reproduces. Full profile only.

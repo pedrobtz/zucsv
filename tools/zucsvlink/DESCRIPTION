@@ -1,0 +1,21 @@
+Package: zucsvlink
+Title: Static-Archive Consumer Fixture for zucsv
+Version: 0.0.0.9000
+Authors@R: 
+    person("Pedro", "Baltazar", , "pedrobtz@gmail.com", role = c("aut", "cre"))
+Description: Not for release. Consumes zucsv as zugodb will, through
+    LinkingTo alone: zucsv.h and zucsv-r.h come off the LinkingTo include
+    path, and ./configure links the installed libzucsv.a and then
+    libzuarrow.a statically, so there is no Imports entry and no run-time
+    dependency on either package. It probes the double converter at load
+    and reads CSV files through zucsv_open_stream() on a thread that is
+    not R's.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LinkingTo: 
+    zucsv,
+    zuarrow
+Suggests: 
+    testthat (>= 3.2.0),
+    zucsv
+Config/testthat/edition: 3

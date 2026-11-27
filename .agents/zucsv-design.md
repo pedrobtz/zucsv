@@ -1,6 +1,6 @@
 # zucsv — Design for v0.1.0
 
-**Status:** Draft, revised 2026-09-12; §10/§13/§14/§15 corrected against the vendored parser's measured behavior (`tools/zsv-behavior.md`). Decisions are logged in §29.  
+**Status:** Draft, revised 2026-09-12; §30 (the C API, #23) added 2026-11-27; §10/§13/§14/§15 corrected against the vendored parser's measured behavior (`tools/zsv-behavior.md`). Decisions are logged in §29.  
 **Backend:** vendored `zsv` / `libzsv`  
 **Primary API:** `read_csv()`  
 **Scope:** small, read-only first release, shipped to CRAN  
@@ -679,11 +679,12 @@ All native resources must be released on both success and R errors:
 - `zsv_parser` instances;
 - native temporary allocations.
 
-The cleanup discipline for v0.1:
+The cleanup discipline (revised 2026-11-27 for the R-free core, §30, decision 24):
 
-- all `zucsv`-owned scratch memory (per-column inference state, the translated `na` table, the numeric scratch buffer) is allocated with `R_alloc()`, which R frees automatically when `.Call` returns or unwinds — so it never needs explicit cleanup;
-- the two resources that are not R-managed, the `FILE *` and the `zsv_parser`, live in a single reader struct;
-- the parse runs inside `R_UnwindProtect()` with a cleanup function that closes and deletes whatever is non-`NULL` in that struct and then continues the unwind with `R_ContinueUnwind()`. `Rf_error()` and `R_CheckUserInterrupt()` both long-jump, so every error and interrupt goes through this cleanup.
+- every resource a read holds -- the `FILE *`, the `zsv_parser`, and the core's malloc'd arrays (header names, per-column types and inference state, the `R_strtod` fallback's scratch buffer) -- hangs off one `zucsv_core` (`src/core.h`), and `zucsv_core_close()` releases all of it from any state, twice included;
+- the core never calls R. It reports a failure as an errno code and read_csv()'s message, and read_csv() raises the message; its interrupt check is a progress hook the core calls on the schedule above, which read_csv() points at `R_CheckUserInterrupt()`;
+- scratch on the R side (the translated `na` table, the forced types, the column pointers and the `CHARSXP` reuse table) is still `R_alloc()`'d, which R frees when `.Call` returns or unwinds;
+- the read runs inside `R_UnwindProtect()` with a cleanup function that calls `zucsv_core_close()` and then continues the unwind. `Rf_error()` and `R_CheckUserInterrupt()` both long-jump -- the latter out of the core's frames, which hold nothing the core struct does not -- so every error and interrupt goes through this cleanup.
 
 ## 17. Vendoring `zsv`
 
@@ -929,9 +930,7 @@ Development CI runs the native code under AddressSanitizer and UndefinedBehavior
 
 ### Fuzzing
 
-Keep the parser boundary easy to fuzz independently of R.
-
-A future `zufuzz` harness should generate arbitrary CSV bytes and exercise:
+Keep the parser boundary easy to fuzz independently of R. Since #23 the core runs without R, and `tools/capi/fuzz.c` (run by `fuzz.yaml`, r-actions' `fuzz.yml`, under ASan and UBSan) is that harness: each input is read through the stream with the header given, absent and detected, and held to pass 2 delivering pass 1's counts, and to the stream equalling a second read and a read in batches of three. It exercises:
 
 ```text
 bytes
@@ -989,7 +988,7 @@ R (>= 4.2.0)
     └── vendored zsv C sources
 ```
 
-No runtime R package dependencies are required.
+No runtime R package dependencies are required. Since #23 the package has one build-time dependency, `LinkingTo: zuarrow`, whose bundled nanoarrow builds the Arrow stream's arrays (§30); `./configure` links zuarrow's installed `libzuarrow.a`, so nothing of zuarrow is loaded at run time.
 
 `testthat` is the only `Suggests` entry needed for tests. Benchmark-only packages stay out of `DESCRIPTION` entirely (§22).
 
@@ -1041,6 +1040,16 @@ No runtime R package dependencies are required.
 ### `src/vendor/zsv/`
 
 - vendored parser subset, upstream license, `UPSTREAM` record.
+
+### Since #23 (§30)
+
+- `src/core.c`, `src/core.h`: the R-free reader, pass 1 and the pass-2 cursor (what `src/zucsv.h` held, without R);
+- `src/stream.c`: `zucsv_open_stream()`, the Arrow C stream over the core;
+- `src/read_csv.c`: `read_csv()` and `sniff_csv()` as clients of the core;
+- `src/r_strtod.c`: read_csv()'s converter mode, probed at load; `src/r_stream.c`: test hooks that read the stream back;
+- `inst/include/zucsv.h`, `inst/include/zucsv-r.h`: the public headers;
+- `src/Makevars.in`, `configure`, `configure.win`, `src/install.libs.R`: the build, and `libzucsv.a` installed to `lib${R_ARCH}`;
+- `tools/capi/`: the R-free C suite and the fuzz harness; `tools/zucsvlink/` and `tools/ci/consumer.sh`: the consumer fixture.
 
 ## 25. CRAN requirements
 
@@ -1148,8 +1157,65 @@ Decisions taken in the 2026-09-12 revision that were open or unstated in the fir
 | 16 | Pass 2 reuses the previous `CHARSXP` per column when the bytes match (§5) | Call `mkCharLenCE()` for every cell; a hash of recent values | Real categorical columns repeat: one `memcmp` beats hashing into R's global string cache, 24.1 → 8.0 ns/cell on KEN_ALL's prefecture column, 18% end to end on run-heavy data and ~2% cost when nothing repeats. A local hash table to catch non-adjacent repeats measured *worse* than both, so it was not built. The comparison is against the stored `CHARSXP`'s own bytes, never the previous cell's, which live in the parser's reused buffer. |
 | 17 | Keep the pull API; do not adopt the SIMD engine (§18) | Push API with `scan_engine = FAST`, worth ~10% on numeric and more on text | The fast engine returns un-normalized cells, so adopting it means reimplementing CSV unquoting in `zucsv` — the one thing §28 assigns to `zsv` — and a quoted empty cell would arrive as two bytes, quietly changing §10. Prototyped and reverted; the measurements are in `tools/zsv-behavior.md`. |
 | 18 | Inference skips the double grammar when the integer grammar accepts (§11) | Test all three grammars on every cell | Integer syntax is a subset of double syntax, so a cell the integer grammar takes is already known valid double and `can_double` stays true. Removes a whole digit scan per cell from an integer column, measured 0.131s → 0.119s on a 2M-cell integer file — the one shape none of the earlier conversion work helped. The subset claim is checked exhaustively over short strings and 2M random digit strings. |
-| 19 | Conversion state is filled once from `R_init_zucsv()`, and calibration probes go through `zucsv_as_double()` (§11) | Lazy initialisation on first use; calibration calling the two instances directly | Lazy statics would be a data race the moment conversion moved to worker threads, and cost a branch besides. Routing the probes through the public entry point keeps each converter at exactly one call site: calling them directly let the compiler unroll the probe loop, inline a converter per probe, and spend the budget it needed for the hot path — 0.138s → 0.201s on a 2M-cell numeric file from nothing but a longer probe list. |
+| 19 | Conversion state is filled once from `R_init_zucsv()`, and calibration probes go through `zucsv_as_double()` (§11); superseded by decision 25 (2026-11-27), which keeps the single call site | Lazy initialisation on first use; calibration calling the two instances directly | Lazy statics would be a data race the moment conversion moved to worker threads, and cost a branch besides. Routing the probes through the public entry point keeps each converter at exactly one call site: calling them directly let the compiler unroll the probe loop, inline a converter per probe, and spend the budget it needed for the hot path — 0.138s → 0.201s on a 2M-cell numeric file from nothing but a longer probe list. |
 | 20 | `header = NA` decides from the first record alone: a header unless one field is numeric or logical syntax (§4) | `fread`/duckdb's rule — compare the first record against the types inferred from the rest | Measured against both on six shapes, the two rules agree everywhere except a header row that itself holds a numeric-looking name over a numeric column (`1,score` over `5,10`), which zucsv reads as data. Buying that case costs the two-pass design its shape: the inferred types are final only at the end of pass 1, so the verdict would have to be deferred and the first record copied out of the parser's reused buffer, and `col_types` would need a rule for validating a record that is not yet known to be data. Deciding from the first record needs neither — it happens where the record is already live, and pass 2 is untouched. The default stays `TRUE`: detection is opt-in, so no existing result changes. |
 | 21 | A quoted field is text, and is skipped before either grammar, for detection (§4) | Judge the unquoted text, so `"2024"` and `2024` are the same evidence | Quoting is the one piece of authorial intent CSV carries, and `zucsv` already treats it as meaning something (decision 11: a quoted empty cell is not a blank line). A header of year or period names is an ordinary shape that the unquoted rule got wrong, and the flag is already on the cell, so the fix costs nothing. It is not free of consequence: a headerless file whose first record is entirely quoted numbers (`"1","2"`) now reads as a header, where `fread` and DuckDB read data. That shape needs a quote-everything writer *and* no header, which is rarer than a quoted header row, so the trade is taken deliberately and pinned by a test. |
 | 22 | `sniff_csv()` is an early return from `read_csv()`'s own pass 1 (§4) | A separate lighter-weight implementation that samples the head of the file, as `fread` and DuckDB sniffers do | The function's only value is that it reports what the reader *would* do; an independent implementation could disagree with it, and a sampled one would disagree on exactly the awkward files someone reaches for a sniffer to understand. Sharing the pass makes agreement structural rather than tested — the tests check it anyway, over twelve fixture shapes. The cost is that sniffing is not cheap: it reads the whole file. That is the honest price of an exact `nrow` and a `col_types` that is right about the last row as well as the first. |
 | 23 | In-memory input is `text =`, a separate argument from `file` (§4) | Overload `file` and detect a newline; readr's `I()` marker | Detection guesses, and guesses wrongly on the one input that matters --- a single-column CSV with no newline is indistinguishable from a path, and a path containing a newline is legal on every platform `zucsv` supports. `I()` needs the marker explained before the feature can be used. A named argument mirrors `utils::read.csv(text=)`, which is where an R user will look first, and it costs nothing: the two arguments are mutually exclusive, so there is no ambiguity to resolve at all. The two-pass design survives unchanged because a string rewinds more cheaply than a file reopens. |
+| 24 | `read_csv()` and `sniff_csv()` are clients of an R-free core that the Arrow stream shares (§30, #23; 2026-11-27) | Keep the R reader as it was and write the stream's reader beside it, which #23 allowed | Two readers would be two sets of the ~470 lines of checks, free to drift apart; with one core the stream cannot read a file differently from `read_csv()`, and its errors are `read_csv()`'s messages word for word by construction. Measured on 400,000-row numeric and character files, `read_csv()` takes the same time as before (0.154 s to 0.148 s, 0.169 s to 0.167 s). Every existing test passes unchanged. |
+| 25 | The double converter's mode is an argument, required from the stream's caller and found by `zucsv_strtod_probe()` in `zucsv-r.h`, which `R_init_zucsv` calls too; the power tables are constants, checked against R's loop (§11, §30; 2026-11-27) | Keep decision 19's state filled from `R_init_zucsv()` | A static in the archive is one copy per shared object that links it, and `R_init_zucsv` never runs there, so the first conversion would have probed R from whatever thread got there first. A constant table needs no initialisation at all, so the archive holds no mutable global; `zucsv_strtod_usable()` refuses the fast instance wherever the constants are not what R's loop computes, so exactness never rests on the literals alone. The probe gained the verbatim double instance as a last candidate, which only a machine whose double table failed could reach. |
+| 26 | A failure in the core is an errno code (`EINVAL` for input `read_csv()` refuses, `EIO` for a file that cannot be opened, read or changed, `ENOMEM`) and `read_csv()`'s message; `read_csv()` raises the message after translating it from UTF-8 (§20, §30; 2026-11-27) | Condition classes or kinds in the C API | The message is the contract a consumer re-raises (zugodb does), and a code is what the Arrow stream interface carries. Kinds belong with classed errors (#40, #63), still open. The one visible difference: in a non-UTF-8 locale a non-ASCII byte of a cell or path shown in an error message is now escaped as R escapes it, where it was printed raw; header names were already translated. |
+| 27 | Arrays are built with zuarrow's bundled nanoarrow, through `LinkingTo: zuarrow`, and zucsv's own shared object links `libzuarrow.a` too (§23, §30; 2026-11-27) | Vendor nanoarrow here; keep the stream out of zucsv's shared object and test it only through the fixture | #23 rules out a second nanoarrow. Linking the stream into zucsv itself is what lets the package's own suite, under every sanitizer and gctorture leg, hold the stream to `read_csv()`; `libzucsv.a` still holds none of zuarrow's objects. |
+| 28 | `col_types` in the C API is a list of type names, and an unknown name is `EINVAL` (§30; 2026-11-27) | An enum of type codes; mapping an unknown name to character as `C_read_csv` does | Names mirror `read_csv()` (#23 requirement 6) and pass straight through from a consumer's R argument; without an R wrapper in front, the C entry point is the only check. `C_read_csv`'s own mapping is unchanged, so #41 stays open. |
+
+## 30. The C API for other packages (#23)
+
+Added 2026-11-27. zugodb reads CSV through this package, linked at build time as a static archive, with the Arrow C stream as the contract (zugodb's design §7, pedrobtz/zugodb#60). This section is the specification of that surface; decisions 24 to 28 are why it has this shape.
+
+### Layout
+
+```text
+src/core.c     pass 1 and the pass-2 cursor, no R  ┐
+src/convert.c  grammars and converters, no R       ├─ libzucsv.a
+src/stream.c   the Arrow C stream, no R            │
+zsv            the vendored parser                 ┘
+src/read_csv.c read_csv(), sniff_csv(): R vectors from the same cursor
+```
+
+`libzucsv.a` is the four objects the shared object also links, compiled once with R's flags (hidden visibility, position independent), and is installed to `<pkg>/lib${R_ARCH}` by `src/install.libs.R`. It holds none of zuarrow's objects: a consumer links `libzucsv.a` and then `libzuarrow.a`, once. `tests/testthat/test-abi.R` holds the archive to calling no R and nothing CRAN's compiled-code check reports, to defining only `zucsv_*` and `zsv_*` symbols (and `collate_header_destroy`, zsv's one global without its prefix, which a second copy of zsv in the same link would collide with), to holding no mutable global, and the shared object to exporting `R_init_zucsv` alone. Patch 0006 lets `-DZSV_EXPORT=` give zsv's functions the build's hidden visibility.
+
+### The surface
+
+`inst/include/zucsv.h` (no R; `<stddef.h>` and `<stdint.h>` only) declares `ZUCSV_ABI_VERSION` (1), `zucsv_options` with `struct_size` first, `zucsv_options_init()`, `zucsv_abi_version()`, the probe's three helpers, and the one entry point:
+
+```c
+int zucsv_open_stream(const char *path, const zucsv_options *options,
+                      struct ArrowArrayStream *out);
+```
+
+The options mirror `read_csv()`'s arguments -- `header` (`ZUCSV_HEADER_YES`, `_NO`, `_DETECT`), `delimiter`, the `na` strings, `col_types` -- with its defaults, plus `strtod_mode` (required), `strtod` (only with `ZUCSV_STRTOD_CALL`: `R_strtod`) and `batch_rows` (65,536). There is no column selection (§3).
+
+`inst/include/zucsv-r.h` adds `zucsv_strtod_probe()`, `static inline`, which a consumer runs once on R's main thread -- `R_init_<pkg>` -- and `zucsv_options_set_strtod()`. The probe compares each converter instance with `R_strtod()` on the probe values and returns the first that agrees, in order of speed, or `ZUCSV_STRTOD_CALL`. `R_init_zucsv` makes the same call.
+
+### The stream
+
+Opening is pass 1: the whole file is read, validated and typed, so any error `read_csv()` raises is returned before a schema exists, with its message. The schema is a non-nullable struct (`+s`) of one nullable child per column, named by the header or `V1`, `V2`, ...: `b` for logical, `i` for integer, `g` for double, `u` for character -- the four formats zugodb's intake accepts for `BOOLEAN`, `INTEGER`, `DOUBLE` and `VARCHAR`. `get_next()` is pass 2 for up to `batch_rows` rows: a cell equal to an `na` string is null, a double is `as.numeric()`'s value bit for bit, a string is strict UTF-8, no row is null as a whole, and the rows end with no empty batch. An empty or header-only file is a schema and no batch.
+
+On failure `zucsv_open_stream()` returns the code and leaves `out` a stream in an error state, whose `get_schema()` and `get_next()` return the code and whose `get_last_error()` gives the message; only when that cannot be allocated is `ENOMEM` returned with `out->release` NULL. A `get_next()` that fails -- the file changed after open, a read error, `ENOMEM` -- leaves its array released and the stream failed for good. A file changed between the passes is an error from the stream (#23 requirement 7), now reachable in a test (`test-stream.R`, `tools/capi`), which it never was for `read_csv()`.
+
+### Threads
+
+Every function in `zucsv.h` may be called on any thread; none calls R, long-jumps, aborts or writes to stdout or stderr, and the archive holds no mutable global, so distinct streams share nothing. One stream is used from one thread at a time. A stream in `ZUCSV_STRTOD_CALL` calls `R_strtod` per double cell, so it is read on R's main thread; no build has been seen to need that mode. `tools/capi` runs the entry point on eight threads under ThreadSanitizer (`consumer.yaml`), with a negative control that shares one stream and must be reported.
+
+### Verification
+
+- `tests/testthat/test-stream.R`: the stream against `read_csv()` (identical, doubles bit for bit in every converter mode, every batch size), every error's message against `read_csv()`'s, the refusals, the file changed after open, and `zuarrow::arrow_to_r()` validating the stream;
+- `tests/testthat/test-abi.R`: the archive and the shared object, as above;
+- `tools/capi/`: the core and stream with no R at all, under ASan, UBSan and TSan, including the progress hook's schedule;
+- `tools/zucsvlink/` with `tools/ci/consumer.sh` (`consumer.yaml`): a package with only `LinkingTo: zucsv, zuarrow` that probes at load, links both archives, reads on a thread that is not R's, equals `zucsv::read_csv()` and runs with zucsv and zuarrow removed from the library, on Linux, and on macOS and Windows in the full profile;
+- `tools/capi/fuzz.c` (`fuzz.yaml`).
+
+### Open questions for the maintainer
+
+1. **CRAN.** `LinkingTo: zuarrow` is a hard build dependency, and zuarrow's C API is not on CRAN (DESCRIPTION pins it with `Remotes:`). The next CRAN release of zucsv therefore waits for a zuarrow release on CRAN that ships `libzuarrow.a`, unless the stream is made optional at build time. Not settled here.
+2. **`collate_header_destroy`.** zsv's one unprefixed global could collide in a consumer that links another copy of zsv. A patch could rename or hide it; none of the current consumers link zsv, so it is left as recorded.

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Removes what ./configure and the build leave in src/.
+rm -f src/Makevars src/Makevars.win src/libzucsv.a
+rm -f src/*.o src/*.so src/*.dll src/vendor/zsv/src/*.o
