@@ -162,7 +162,7 @@ parser actually does.
 
 ## Stage 6 — C API for other packages
 
-**Issue.** [#23](https://github.com/pedrobtz/zucsv/issues/23). **Pull request.** see the PR that closes #23. **CI.** `full`: it changes the build (a `configure` script, a static archive, `LinkingTo: zuarrow`) and adds a fixture that must build on Linux, macOS and Windows. **Done.** 2026-11-27.
+**Issue.** [#23](https://github.com/pedrobtz/zucsv/issues/23). **Pull request.** [#71](https://github.com/pedrobtz/zucsv/pull/71). **CI.** `full`: it changes the build (a `configure` script, a static archive, `LinkingTo: zuarrow`) and adds a fixture that must build on Linux, macOS and Windows. **Done.** 2026-11-27.
 
 Added 2026-11-27, after 0.1.1, for zugodb's Stage 10 (pedrobtz/zugodb#60). Design §30 is its specification; decisions 24 to 28 its choices.
 
